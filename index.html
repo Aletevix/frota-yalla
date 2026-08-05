@@ -1,0 +1,1855 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Central de Gestão de Frota — Yalla</title>
+<style>
+:root{
+  --navy:#002A69; --navy-deep:#001b45; --navy-light:#0a3d8f;
+  --gold:#FFC21B; --gold-soft:#fff4d6; --gold-deep:#e0a800;
+  --ink:#0d1526; --paper:#f4f6fb; --panel:#ffffff; --rule:#dde3ee;
+  --muted:#6b7488; --accent:var(--navy); --accent-soft:#e7edf9;
+  --wrench:#b8791c; --wrench-soft:#fdf3df;
+  --flag:#d94f3d; --ok:#1a7f4b;
+  --shadow:0 1px 2px rgba(0,42,105,.06),0 8px 28px rgba(0,42,105,.08);
+  --shadow-lg:0 8px 40px rgba(0,42,105,.16);
+}
+/* ---- tela de carregamento executiva ---- */
+/* ---- overlay de carregamento (sobreposto à tela atual) ---- */
+#loading{
+  position:fixed; inset:0; z-index:9999; display:none; place-items:center;
+  background:radial-gradient(120% 120% at 50% 30%, rgba(10,61,143,.72), rgba(0,27,69,.92));
+  backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+  opacity:0; transition:opacity .4s ease;
+}
+#loading.on{opacity:1}
+#loading.out{opacity:0}
+.load-card{text-align:center;color:#fff;animation:loadIn .5s ease;padding:24px}
+@keyframes loadIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+/* cena do camelo */
+.camel-scene{position:relative;width:200px;height:120px;margin:0 auto 8px}
+.camel{position:absolute;left:50%;bottom:18px;width:120px;height:90px;transform:translateX(-50%);
+  animation:camelFloat 1s ease-in-out infinite;filter:drop-shadow(0 6px 10px rgba(0,0,0,.25))}
+@keyframes camelFloat{0%,100%{transform:translateX(-50%) translateY(0) rotate(-1deg)}50%{transform:translateX(-50%) translateY(-7px) rotate(1deg)}}
+.camel-body{animation:bodyBob 1s ease-in-out infinite}
+@keyframes bodyBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.5px)}}
+/* pernas em corrida: alternam em dois pares */
+.leg{transform-box:fill-box;transform-origin:top center;animation:trot .5s linear infinite}
+.leg1,.leg4{animation-delay:0s}
+.leg2,.leg3{animation-delay:.25s}
+@keyframes trot{0%{transform:rotate(18deg)}50%{transform:rotate(-18deg)}100%{transform:rotate(18deg)}}
+/* chão/trilha com movimento pra dar sensação de deslocamento */
+.camel-track{position:absolute;left:0;right:0;bottom:14px;height:3px;border-radius:99px;
+  background:repeating-linear-gradient(90deg,var(--gold) 0 14px,transparent 14px 30px);
+  opacity:.45;animation:trackMove .5s linear infinite}
+@keyframes trackMove{from{background-position:0 0}to{background-position:-30px 0}}
+/* textos */
+.load-title{font-size:20px;font-weight:700;letter-spacing:.02em;margin-top:6px;animation:pulseText 1.6s ease-in-out infinite}
+@keyframes pulseText{0%,100%{opacity:1}50%{opacity:.72}}
+.dots span{opacity:0;animation:dot 1.4s infinite}
+.dots span:nth-child(1){animation-delay:0s}
+.dots span:nth-child(2){animation-delay:.2s}
+.dots span:nth-child(3){animation-delay:.4s}
+@keyframes dot{0%,60%,100%{opacity:0}30%{opacity:1}}
+.load-sub{font-size:12px;color:rgba(255,255,255,.6);margin-top:4px;letter-spacing:.08em;text-transform:uppercase}
+/* barra de progresso corporativa */
+.load-bar{width:280px;height:8px;border-radius:99px;background:rgba(255,255,255,.14);margin:24px auto 0;overflow:hidden;box-shadow:inset 0 1px 2px rgba(0,0,0,.2)}
+.load-bar-fill{height:100%;width:0;border-radius:99px;background:linear-gradient(90deg,var(--gold),var(--gold-deep));transition:width .55s cubic-bezier(.4,0,.2,1);position:relative}
+.load-bar-fill::after{content:"";position:absolute;inset:0;border-radius:99px;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.45),transparent);
+  animation:shimmer 1.3s linear infinite}
+@keyframes shimmer{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+.load-step{margin-top:14px;font-size:13px;color:rgba(255,255,255,.9);min-height:18px;letter-spacing:.01em}
+@media(prefers-reduced-motion:reduce){
+  .camel,.camel-body,.leg,.camel-track,.load-title,.dots span,.load-bar-fill::after{animation:none}
+}
+/* ---- dashboard executivo ---- */
+.dash{padding:8px 4px}
+.dash-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:22px}
+.dash-title{font-size:24px;font-weight:700;color:var(--navy);letter-spacing:-.01em}
+.sec-title{font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:26px 0 12px;padding-bottom:6px;border-bottom:2px solid var(--rule)}
+.sec-title:first-of-type{margin-top:8px}
+.dash-sub{font-size:13px;color:var(--muted);margin-top:3px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px}
+.kpi{background:var(--panel);border:1px solid var(--rule);border-radius:12px;padding:18px 18px;box-shadow:var(--shadow);position:relative;overflow:hidden}
+.kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--navy)}
+.kpi.ok::before{background:var(--ok)} .kpi.wr::before{background:var(--wrench)} .kpi.fl::before{background:var(--flag)}
+.kpi-num{font-size:24px;font-weight:700;color:var(--ink);line-height:1.15;letter-spacing:-.02em;word-break:break-word}
+.kpi.money .kpi-num{font-size:19px}
+.kpi-lbl{font-size:12px;color:var(--muted);margin-top:6px;font-weight:500}
+.dash-hint{margin-top:24px;font-size:13px;color:var(--muted);text-align:center;padding:16px;border:1px dashed var(--rule);border-radius:10px}
+/* ---- barra de filtros, ações e novos blocos ---- */
+.dash-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+.dash-actions{display:flex;gap:8px;align-items:center;flex-shrink:0}
+.btn-top{background:var(--navy);color:#fff;border:0;border-radius:8px;padding:9px 14px;font-size:13px;font-weight:600;cursor:pointer}
+.btn-top:hover{filter:brightness(1.12)}
+.export-wrap{position:relative}
+.menu-export{position:absolute;right:0;top:calc(100% + 6px);background:#fff;border:1px solid var(--rule);border-radius:10px;box-shadow:var(--shadow-lg);min-width:250px;z-index:30;padding:6px}
+.menu-export button{display:block;width:100%;text-align:left;background:none;border:0;padding:8px 12px;font-size:13px;color:var(--ink);cursor:pointer;border-radius:6px}
+.menu-export button:hover{background:var(--accent-soft)}
+.menu-grp{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:8px 12px 4px}
+.filtros-bar{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0;padding:14px;background:var(--panel);border:1px solid var(--rule);border-radius:12px;box-shadow:var(--shadow)}
+.filtros-bar select,.filtros-bar input{padding:7px 10px;border:1px solid var(--rule);border-radius:8px;font-size:12.5px;color:var(--ink);background:#fff;max-width:190px}
+.btn-clear{background:var(--paper);border:1px solid var(--rule);border-radius:8px;padding:7px 12px;font-size:12.5px;cursor:pointer;color:var(--muted)}
+.btn-clear:hover{background:var(--accent-soft);color:var(--navy)}
+.filtro-on{color:var(--gold-deep);font-weight:600}
+.alertas{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px}
+.alerta{font-size:12px;padding:5px 12px;border-radius:99px;background:var(--accent-soft);color:var(--navy);font-weight:600}
+.alerta.wr{background:var(--wrench-soft);color:var(--wrench)} .alerta.fl{background:#fdecea;color:var(--flag)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:900px){.grid2{grid-template-columns:1fr}}
+.grid2 .panel{margin-top:0}
+.panel-empty{color:var(--muted);font-size:13px;padding:8px 0}
+.tip{cursor:help;color:var(--muted);font-size:11px;border:1px solid var(--rule);border-radius:50%;padding:0 4px;margin-left:2px}
+/* ---- impressão ---- */
+@media print{
+  @page{margin:12mm}
+  body{background:#fff}
+  #gate,#loading,#drop,.no-print,.dash-actions,.filtros-bar,#side .side-head,#side #list,#side #count,.reload{display:none !important}
+  #app{display:block !important;height:auto}
+  #side{border:0;display:none}
+  #detail{overflow:visible;height:auto}
+  .dash-hint{display:none}
+  .panel,.kpi{box-shadow:none;border:1px solid #ccc;break-inside:avoid;page-break-inside:avoid}
+  .kpis{break-inside:avoid}
+  .sec-title{break-after:avoid}
+  .dash-title{color:#000}
+  .cols{height:120px}
+}
+/* ---- paineis analiticos (aba OS) ---- */
+.panel{background:var(--panel);border:1px solid var(--rule);border-radius:12px;padding:18px 20px;margin-top:16px;box-shadow:var(--shadow)}
+.panel-title{font-size:14px;font-weight:700;color:var(--navy);margin-bottom:14px}
+.bar-row{display:grid;grid-template-columns:minmax(120px,1.6fr) 3fr minmax(90px,auto);align-items:center;gap:10px;margin-bottom:9px;font-size:12.5px}
+.bar-label{color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar-track{background:var(--paper);border-radius:99px;height:16px;overflow:hidden}
+.bar-fill{height:100%;border-radius:99px;background:var(--navy);min-width:2px;transition:width .4s ease}
+.bar-fill.wr{background:var(--wrench)} .bar-fill.ok{background:var(--ok)}
+.bar-val{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink);font-weight:600;white-space:nowrap}
+.cols{display:flex;align-items:flex-end;gap:6px;height:150px;padding-top:8px;overflow-x:auto}
+.col-item{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;flex:1;min-width:34px;height:100%}
+.col-bar{width:70%;max-width:32px;background:linear-gradient(180deg,var(--navy-light),var(--navy));border-radius:4px 4px 0 0;min-height:2px;transition:height .4s ease}
+.col-lbl{font-size:10px;color:var(--muted);margin-top:5px;white-space:nowrap;transform:rotate(-45deg);transform-origin:center;height:20px}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font:14px/1.45 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+.mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+
+#drop{position:fixed;inset:0;display:grid;place-items:center;z-index:50;padding:24px;
+  background:radial-gradient(1200px 600px at 50% -10%, #073a86 0%, var(--navy) 40%, var(--navy-deep) 100%)}
+#drop:before{content:"";position:absolute;inset:0;opacity:.06;pointer-events:none;
+  background-image:linear-gradient(var(--gold) 1px,transparent 1px),linear-gradient(90deg,var(--gold) 1px,transparent 1px);
+  background-size:44px 44px}
+#drop .box{position:relative;max-width:580px;width:100%;text-align:center;border:1px solid rgba(255,194,27,.25);
+  border-radius:18px;background:rgba(255,255,255,.98);padding:40px 34px;box-shadow:var(--shadow-lg)}
+#drop.over .box{border-color:var(--gold);box-shadow:0 0 0 4px rgba(255,194,27,.25),var(--shadow-lg)}
+.drop-logo{height:46px;margin:0 auto 18px;display:block}
+#drop h1{font-size:21px;margin:0 0 6px;letter-spacing:-.02em;color:var(--navy)}
+#drop p{color:var(--muted);margin:0 0 24px;font-size:13.5px}
+.slots{display:grid;gap:10px;text-align:left;margin-bottom:22px}
+.slot{display:flex;align-items:center;gap:12px;padding:13px 15px;border:1px solid var(--rule);
+  border-radius:11px;background:var(--paper);transition:border-color .15s,background .15s}
+.slot .ic{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;flex:none;font-size:15px}
+.slot.mov .ic{background:var(--accent-soft);color:var(--navy)}
+.slot.man .ic{background:var(--gold-soft);color:var(--wrench)}
+.slot .txt{flex:1;min-width:0}
+.slot .t1{font-weight:650;font-size:13px;color:var(--ink)}
+.slot .t2{font-size:11.5px;color:var(--muted)}
+.slot .st{font-size:11.5px;font-weight:700}
+.slot.ok{border-color:var(--navy);background:#fff}
+.slot.ok .st{color:var(--ok)}
+.slot.wait .st{color:var(--muted)}
+.btn{display:inline-block;background:var(--navy);color:#fff;border:0;padding:12px 24px;
+  border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;letter-spacing:.01em;transition:transform .1s,filter .15s}
+.btn:hover{filter:brightness(1.12)}
+.btn:active{transform:translateY(1px)}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+.btn.go{background:var(--gold);color:var(--navy)}
+.btn.ghost{background:transparent;color:var(--navy);border:1px solid var(--rule);margin-left:8px}
+#status{margin-top:16px;color:var(--muted);font-size:12.5px;min-height:16px}
+#gate{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:24px;
+  background:radial-gradient(1200px 600px at 50% -10%, #073a86 0%, var(--navy) 40%, var(--navy-deep) 100%)}
+#gate:before{content:"";position:absolute;inset:0;opacity:.06;pointer-events:none;
+  background-image:linear-gradient(var(--gold) 1px,transparent 1px),linear-gradient(90deg,var(--gold) 1px,transparent 1px);
+  background-size:44px 44px}
+.gate-box{position:relative;max-width:380px;width:100%;text-align:center;border:1px solid rgba(255,194,27,.25);
+  border-radius:18px;background:#fff;padding:40px 34px;box-shadow:var(--shadow-lg)}
+.gate-box h1{font-size:21px;margin:14px 0 4px;color:var(--navy)}
+.gate-box p{color:var(--muted);font-size:13px;margin:0 0 22px}
+.gate-box input{width:100%;padding:12px 14px;border:1px solid var(--rule);border-radius:10px;
+  font-size:14px;font-family:inherit;text-align:center;margin-bottom:12px}
+.gate-box input:focus{outline:2px solid var(--navy);border-color:transparent}
+.gate-box .btn{width:100%}
+#gate-msg{margin-top:12px;font-size:12.5px;color:var(--flag);min-height:16px}
+.save-opt{display:flex;align-items:center;gap:7px;justify-content:center;margin-top:16px;
+  font-size:12.5px;color:var(--muted);cursor:pointer}
+.save-opt input{accent-color:var(--navy);width:15px;height:15px;cursor:pointer}
+
+#app{display:none;height:100vh;grid-template-columns:340px 1fr}
+@media(max-width:820px){#app{grid-template-columns:1fr;grid-template-rows:auto 1fr}#side{max-height:42vh}}
+
+#side{border-right:1px solid var(--rule);background:var(--panel);display:flex;flex-direction:column;min-height:0}
+/* modo painel: esconde busca, filtros e lista — mantém logo + abas pra navegar */
+#side.painel-mode .side-head,
+#side.painel-mode #list,
+#side.painel-mode #count{display:none}
+#side-painel{display:none}
+#side.painel-mode #side-painel{display:block;overflow-y:auto;flex:1;min-height:0}
+/* ---- lateral informativa do painel ---- */
+.sp-sec{padding:14px 16px;border-bottom:1px solid var(--rule)}
+.sp-sec h4{margin:0 0 10px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:flex;align-items:center;justify-content:space-between}
+.sp-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:5px 0;font-size:12.5px;cursor:default}
+.sp-row.clik{cursor:pointer;border-radius:6px;margin:0 -6px;padding:5px 6px}
+.sp-row.clik:hover{background:var(--accent-soft)}
+.sp-row .lbl{color:var(--ink)}
+.sp-row .val{font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums;white-space:nowrap}
+.sp-row .val.wr{color:var(--wrench)} .sp-row .val.fl{color:var(--flag)} .sp-row .val.ok{color:var(--ok)}
+.sp-alert{display:flex;gap:8px;align-items:flex-start;padding:7px 0;font-size:12px;cursor:pointer;border-radius:6px;margin:0 -6px;padding:7px 6px}
+.sp-alert:hover{background:var(--accent-soft)}
+.sp-alert .dot{width:8px;height:8px;border-radius:50%;margin-top:4px;flex-shrink:0;background:var(--muted)}
+.sp-alert .dot.wr{background:var(--wrench)} .sp-alert .dot.fl{background:var(--flag)} .sp-alert .dot.ok{background:var(--ok)}
+.sp-alert .txt{color:var(--ink);line-height:1.35}
+.sp-alert .txt b{color:var(--navy)}
+.sp-empty{font-size:12px;color:var(--muted);padding:4px 0}
+.sp-meta{font-size:11.5px;color:var(--muted);line-height:1.5}
+.sp-btn{margin:14px 16px;display:block;width:calc(100% - 32px);background:var(--gold);color:var(--navy);border:0;border-radius:8px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:var(--shadow)}
+.sp-btn:hover{filter:brightness(1.05)}
+.sp-toggle{display:none}
+@media(max-width:820px){
+  .sp-toggle{display:block;width:100%;background:var(--navy);color:#fff;border:0;padding:11px 16px;font-size:13px;font-weight:600;text-align:left;cursor:pointer}
+  #side.painel-mode #side-painel{flex:none}
+}
+.side-brand{background:var(--navy);padding:14px 16px;display:flex;align-items:center;justify-content:space-between}
+.side-brand img{height:26px;display:block}
+.side-brand .reload{cursor:pointer;font-size:11px;color:var(--gold);font-weight:600}
+.side-brand .reload:hover{text-decoration:underline}
+.abas{display:flex;background:var(--navy-deep)}
+.aba{flex:1;border:0;background:transparent;color:rgba(255,255,255,.6);padding:11px 6px;
+  font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;border-bottom:2.5px solid transparent;
+  transition:color .15s,border-color .15s}
+.aba:hover{color:rgba(255,255,255,.9)}
+.aba[aria-pressed=true]{color:var(--gold);border-bottom-color:var(--gold)}
+.side-head{padding:14px 16px 12px;border-bottom:1px solid var(--rule)}
+.brand{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin-bottom:12px;
+  display:flex;justify-content:space-between;align-items:center}
+.brand .reload{cursor:pointer;font-size:11px;color:var(--accent);text-transform:none;letter-spacing:0}
+input[type=search],select{width:100%;padding:9px 11px;border:1px solid var(--rule);border-radius:7px;
+  background:var(--paper);font-size:13px;font-family:inherit;color:var(--ink)}
+input[type=search]:focus,select:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
+.filters{display:grid;gap:8px;margin-top:8px}
+.count{font-size:12px;color:var(--muted);padding:9px 16px;border-bottom:1px solid var(--rule)}
+#list{overflow:auto;flex:1;min-height:0}
+.item{padding:11px 16px;border-bottom:1px solid var(--rule);cursor:pointer;
+  display:grid;grid-template-columns:auto 1fr auto;grid-template-rows:auto auto;gap:2px 9px;align-items:center}
+.item:hover{background:var(--accent-soft)}
+.item[aria-selected=true]{background:var(--navy);color:#fff}
+.item[aria-selected=true] .sub,.item[aria-selected=true] .sub2,.item[aria-selected=true] .n{color:rgba(255,255,255,.8)}
+.item[aria-selected=true] .custo{color:var(--gold)}
+.dot{grid-row:1/3;width:9px;height:9px;border-radius:50%;background:var(--muted)}
+.dot.locado{background:#1a7f4b} .dot.disp{background:#3b82c4} .dot.vend{background:#8a5cc4}
+.dot.manut{background:var(--gold-deep)} .dot.transf{background:#c99a2e} .dot.fora{background:#c0546a}
+.dot.outro{background:var(--muted)}
+.plate{font-weight:700;letter-spacing:.03em;font-size:13.5px;grid-column:2;grid-row:1}
+.n{grid-column:3;grid-row:1;font-size:11px;color:var(--muted);display:flex;gap:6px;justify-self:end}
+.n .w{color:var(--wrench);font-weight:600}
+.item[aria-selected=true] .n .w{color:var(--gold)}
+.sub{grid-column:2;grid-row:2;font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sub2{grid-column:3;grid-row:2;justify-self:end}
+.custo{font-size:11px;color:var(--wrench);font-weight:650;white-space:nowrap}
+
+#detail{overflow:auto;min-height:0;padding:28px 32px 64px}
+@media(max-width:820px){#detail{padding:20px 16px 48px}}
+.empty{display:grid;place-items:center;height:100%;color:var(--muted);text-align:center}
+h2{margin:0;font-size:26px;letter-spacing:-.02em;color:var(--navy);font-weight:750}
+.chassi{color:var(--muted);font-size:13px;margin-top:3px}
+.meta{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 20px}
+.tag{font-size:11.5px;padding:4px 11px;border-radius:999px;background:var(--accent-soft);color:var(--navy);font-weight:650}
+.tag.km{background:#eef1f7;color:var(--muted)}
+.tag.man{background:var(--gold-soft);color:var(--wrench)}
+.tag.fora{background:#fbe9e6;color:var(--flag)}
+
+.toggle{display:flex;gap:6px;margin:0 0 20px;flex-wrap:wrap}
+.toggle button{border:1px solid var(--rule);background:var(--panel);color:var(--muted);
+  padding:6px 14px;font-size:12.5px;border-radius:7px;cursor:pointer;font-family:inherit}
+.toggle button[aria-pressed=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.actions{margin-left:auto;display:flex;gap:6px}
+.actions button{border:1px solid var(--rule);background:var(--panel);padding:6px 14px;
+  font-size:12.5px;border-radius:7px;cursor:pointer;font-family:inherit;color:var(--ink)}
+.actions button:hover{background:var(--accent-soft)}
+
+.tl{position:relative;padding-left:26px;max-width:820px}
+.tl:before{content:"";position:absolute;left:6px;top:6px;bottom:6px;width:1.5px;background:var(--rule)}
+.ev{position:relative;padding:0 0 22px}
+.ev:before{content:"";position:absolute;left:-24px;top:5px;width:9px;height:9px;border-radius:50%;
+  background:var(--panel);border:2px solid var(--rule)}
+.ev.open:before{background:var(--flag);border-color:var(--flag)}
+.ev.man:before{background:var(--wrench);border-color:var(--wrench);border-radius:2px}
+.ev-status{font-weight:650;font-size:14px;letter-spacing:-.01em}
+.ev.open .ev-status{color:var(--flag)}
+.ev.man .ev-status{color:var(--wrench)}
+.ev-when{font-size:12.5px;color:var(--muted);margin-top:2px}
+.ev-facts{display:flex;flex-wrap:wrap;gap:4px 18px;margin-top:6px;font-size:12.5px;color:var(--muted)}
+.ev-facts b{font-weight:600;color:var(--ink)}
+.ev-where{font-size:12.5px;margin-top:3px}
+.jump{color:var(--flag);font-weight:600}
+
+/* card de manutenção expansível */
+.man-card{margin-top:8px;border:1px solid var(--wrench-soft);border-radius:9px;overflow:hidden}
+.man-head{background:var(--wrench-soft);padding:9px 12px;display:flex;align-items:center;gap:10px;cursor:pointer}
+.man-head .val{margin-left:auto;font-weight:650;color:var(--wrench)}
+.man-head .arrow{color:var(--wrench);transition:transform .15s}
+.man-card.open .man-head .arrow{transform:rotate(90deg)}
+.man-body{display:none;padding:0}
+.man-card.open .man-body{display:block}
+.man-body table{width:100%;border-collapse:collapse;font-size:12px}
+.man-body th{text-align:left;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);
+  padding:7px 12px;border-bottom:1px solid var(--rule);background:var(--paper)}
+.man-body td{padding:7px 12px;border-bottom:1px solid var(--rule);vertical-align:top}
+.man-body td.r{text-align:right;white-space:nowrap}
+.man-body tr:last-child td{border-bottom:0}
+.man-foot{padding:8px 12px;display:flex;gap:8px;align-items:center;background:var(--paper);border-top:1px solid var(--rule)}
+.pdf-btn{background:var(--wrench);color:#fff;border:0;padding:6px 14px;border-radius:6px;font-size:12px;
+  font-weight:600;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
+.pdf-btn:hover{filter:brightness(1.08)}
+.dl-btn{background:var(--navy);cursor:pointer;margin-left:8px}
+.dl-btn:hover{filter:brightness(1.12)}
+.man-foot .tot{margin-left:auto;font-size:12.5px;color:var(--muted)}
+
+.cliente-box{margin-top:18px;border:1px solid var(--rule);border-radius:8px;overflow:hidden}
+.cliente-box td:first-child{width:120px;color:var(--muted);white-space:nowrap}
+table.full{width:100%;border-collapse:collapse;font-size:12.5px}
+table.full th{text-align:left;font-weight:600;font-size:11px;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--muted);padding:8px 10px;border-bottom:1.5px solid var(--rule);position:sticky;top:0;background:var(--paper)}
+table.full td{padding:7px 10px;border-bottom:1px solid var(--rule);vertical-align:top}
+table.full tr.open td{background:#fdf4ef}
+table.full tr.man td{background:var(--wrench-soft)}
+table.full tr.os-click{cursor:pointer}
+table.full tr.os-click:hover td{background:var(--gold-soft);filter:brightness(.97)}
+.head-row{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap}
+.hint{font-size:12px;color:var(--muted);margin:-8px 0 16px;max-width:820px}
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <div class="gate-box">
+    <img class="drop-logo" src="data:image/png;base64,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" alt="Yalla">
+    <h1>Frota Yalla</h1>
+    <p>Acesso restrito. Use o link completo fornecido pela empresa.</p>
+    <div id="gate-msg"></div>
+  </div>
+</div>
+
+<div id="loading" style="display:none">
+  <div class="load-card">
+    <div class="camel-scene">
+      <div class="camel-track"></div>
+      <svg class="camel" viewBox="0 0 120 90" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <g class="camel-body" fill="var(--gold)">
+          <!-- corpo esguio, uma corcova, pescoço longo curvado, cabeça com focinho -->
+          <path d="M16 62
+                   Q15 46 30 43
+                   Q37 30 45 35
+                   Q45 27 49 21
+                   Q52 15 59 16
+                   Q64 16 65 20
+                   Q69 20 68 24
+                   Q67 27 63 26
+                   Q61 30 57 33
+                   Q54 42 58 52
+                   Q56 55 60 56
+                   Q76 55 84 62
+                   Q86 64 82 64
+                   L20 64
+                   Q16 64 16 62 Z"/>
+          <!-- orelha -->
+          <path d="M54 16 Q53 10 58 12 Q60 15 56 19 Z"/>
+        </g>
+        <!-- pernas finas animadas -->
+        <g stroke="var(--gold)" stroke-width="5" stroke-linecap="round">
+          <line class="leg leg1" x1="30" y1="60" x2="30" y2="82"/>
+          <line class="leg leg2" x1="44" y1="60" x2="44" y2="82"/>
+          <line class="leg leg3" x1="62" y1="60" x2="62" y2="82"/>
+          <line class="leg leg4" x1="76" y1="60" x2="76" y2="82"/>
+        </g>
+      </svg>
+    </div>
+    <div class="load-title">Carregando sistema<span class="dots"><span>.</span><span>.</span><span>.</span></span></div>
+    <div class="load-sub">Yalla Transportes e Serviços</div>
+    <div class="load-bar"><div class="load-bar-fill" id="load-fill"></div></div>
+    <div id="loading-pct" class="load-step">Iniciando sistema…</div>
+  </div>
+</div>
+
+<div id="drop">
+  <div class="box">
+    <img class="drop-logo" src="data:image/png;base64,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" alt="Yalla">
+    <h1>Movimentação &amp; Manutenção da Frota</h1>
+    <p>Movimentação e manutenção de cada veículo, num lugar só. Carregue os arquivos exportados do Easy. Tudo roda no seu computador.</p>
+    <div class="slots">
+      <div class="slot mov wait" id="slot-mov">
+        <div class="ic">↔</div>
+        <div class="txt"><div class="t1">Movimentação</div><div class="t2">movimentacoes.csv</div></div>
+        <div class="st">aguardando</div>
+      </div>
+      <div class="slot man wait" id="slot-man">
+        <div class="ic">🔧</div>
+        <div class="txt"><div class="t1">Manutenção (opcional)</div><div class="t2">os_completo.csv — ou cabeçalho + serviços</div></div>
+        <div class="st">aguardando</div>
+      </div>
+    </div>
+    <input type="file" id="file" accept=".csv" multiple hidden>
+    <button class="btn" id="pick">Escolher arquivos</button>
+    <button class="btn go" id="go" disabled>Abrir sistema →</button>
+    <label class="save-opt"><input type="checkbox" id="saveChk" checked> Lembrar destes dados — não preciso carregar de novo na próxima vez</label>
+    <div id="status">arraste os CSVs para cá — ou clique para escolher</div>
+  </div>
+</div>
+
+<div id="app">
+  <aside id="side">
+    <div class="side-brand">
+      <img src="data:image/png;base64,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" alt="Yalla">
+      <span class="reload" id="reload">Atualizar base de dados</span>
+    </div>
+    <div class="abas">
+      <button class="aba" data-aba="painel" aria-pressed="true">Painel</button>
+      <button class="aba" data-aba="tudo" aria-pressed="false">Tudo</button>
+      <button class="aba" data-aba="mov" aria-pressed="false">Movimentação</button>
+      <button class="aba" data-aba="os" aria-pressed="false">Ordens de Serviço</button>
+      <button class="aba" data-aba="contratos" aria-pressed="false" style="display:none">Contratos</button>
+    </div>
+    <div class="side-head">
+      <input type="search" id="q" placeholder="Placa, chassi ou modelo" autocomplete="off">
+      <div class="filters">
+        <select id="fFrota">
+          <option value="">Toda a base</option>
+          <option value="ativa">Só frota atual</option>
+          <option value="fora">Só fora da frota</option>
+        </select>
+        <select id="fFilial"><option value="">Todas as filiais</option></select>
+        <select id="fGrupo"><option value="">Todos os grupos</option></select>
+        <select id="fStatus"><option value="">Qualquer status atual</option></select>
+      </div>
+    </div>
+    <div class="count" id="count"></div>
+    <div id="list" role="listbox"></div>
+    <div id="side-painel"></div>
+  </aside>
+  <main id="detail"><div class="empty"><div>Escolha um veículo à esquerda.</div></div></main>
+</div>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const R2_BASE = "https://pub-907714b4891b4181b0a0c1fd52f8a578.r2.dev";
+const EASY_BASE = 'https://rms188h.easycarros.com/eTools/erental/OrdemServicoImpA4.asp';
+// PDFs das OS agora vêm do R2 (não dependem de login no Easy Carros)
+const pdfURL = num => `${R2_BASE}/os/OS_${num}.pdf`;
+
+// ---- Contratos (PDFs hospedados no Cloudflare R2) ----
+const contratoPDF = c => `${R2_BASE}/${c.status}/${c.arquivo}`;
+
+// Baixa um PDF do R2 e salva com o nome dado (funciona mesmo entre domínios)
+/* ---------- EXPORTAÇÃO CSV (reutilizável) ---------- */
+// Gera CSV com ; separador, BOM UTF-8, escape correto, e dispara download.
+function exportarCSV(nomeArquivo, colunas, dados){
+  const esc = v => {
+    let s = (v===null||v===undefined) ? "" : String(v);
+    if(/[;"\n\r]/.test(s)) s = '"' + s.replace(/"/g,'""') + '"';
+    return s;
+  };
+  const linhas = [];
+  linhas.push(colunas.map(c=>esc(c.titulo)).join(";"));
+  for(const d of dados){
+    linhas.push(colunas.map(c=>esc(typeof c.valor==="function"?c.valor(d):d[c.valor])).join(";"));
+  }
+  const conteudo = "\uFEFF" + linhas.join("\r\n"); // BOM UTF-8
+  const blob = new Blob([conteudo], {type:"text/csv;charset=utf-8;"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = nomeArquivo;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 4000);
+}
+// data de hoje no nome do arquivo: DD-MM-AAAA
+function hojeArquivo(){
+  const d=new Date();
+  return String(d.getDate()).padStart(2,"0")+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+d.getFullYear();
+}
+// data DD/MM/AAAA a partir do "de"/"data" (que já vem nesse formato ou com hora)
+const dataBR = s => (s||"").split(" ")[0];
+
+/* ---------- EXPORTAÇÕES ---------- */
+// Cada função monta colunas + dados e chama exportarCSV, respeitando FILTROS.
+
+function expFrotaAtual(){
+  const dados=veiculosFiltrados().filter(v=>situacao(v)!=="fora");
+  exportarCSV("frota_atual_"+hojeArquivo()+".csv",[
+    {titulo:"Placa",valor:"placa"},{titulo:"Chassi",valor:"chassi"},{titulo:"Grupo",valor:"grupo"},
+    {titulo:"Filial",valor:"filial"},{titulo:"Situação",valor:v=>SIT_LABEL[situacao(v)]},
+    {titulo:"Status atual",valor:"statusAtual"},{titulo:"KM atual",valor:v=>v.kmAtual??""},
+    {titulo:"Nº OS",valor:"totalMan"},{titulo:"Custo OS (R$)",valor:v=>fmtBRL(v.custoMan)}
+  ],dados);
+}
+function expTodosVeiculos(){
+  const dados=veiculosFiltrados();
+  exportarCSV("todos_veiculos_"+hojeArquivo()+".csv",[
+    {titulo:"Placa",valor:"placa"},{titulo:"Chassi",valor:"chassi"},{titulo:"Grupo",valor:"grupo"},
+    {titulo:"Filial",valor:"filial"},{titulo:"Situação",valor:v=>SIT_LABEL[situacao(v)]},
+    {titulo:"Status atual",valor:"statusAtual"},{titulo:"KM atual",valor:v=>v.kmAtual??""},
+    {titulo:"Nº movimentações",valor:"totalMov"},{titulo:"Nº OS",valor:"totalMan"},
+    {titulo:"Custo OS (R$)",valor:v=>fmtBRL(v.custoMan)}
+  ],dados);
+}
+function expManutencao(){
+  const dados=veiculosFiltrados().filter(v=>situacao(v)==="manutencao");
+  exportarCSV("veiculos_em_manutencao_"+hojeArquivo()+".csv",[
+    {titulo:"Placa",valor:"placa"},{titulo:"Grupo",valor:"grupo"},{titulo:"Filial",valor:"filial"},
+    {titulo:"Status atual",valor:"statusAtual"},{titulo:"KM atual",valor:v=>v.kmAtual??""},
+    {titulo:"Nº OS",valor:"totalMan"},{titulo:"Custo OS (R$)",valor:v=>fmtBRL(v.custoMan)}
+  ],dados);
+}
+function expFora(){
+  const dados=veiculosFiltrados().filter(v=>situacao(v)==="fora");
+  exportarCSV("veiculos_fora_da_frota_"+hojeArquivo()+".csv",[
+    {titulo:"Placa",valor:"placa"},{titulo:"Grupo",valor:"grupo"},{titulo:"Filial",valor:"filial"},
+    {titulo:"Nº OS",valor:"totalMan"},{titulo:"Custo OS (R$)",valor:v=>fmtBRL(v.custoMan)}
+  ],dados);
+}
+function expMovimentacoes(){
+  const linhas=[];
+  for(const v of veiculosFiltrados()){
+    for(const m of v.movs){
+      linhas.push({placa:v.placa,grupo:v.grupo,filial:m.filial||v.filial,status:m.status,
+        de:dataBR(m.de),ate:dataBR(m.ate),kmInicial:m.kmInicial,kmFinal:m.kmFinal,
+        motorista:m.motorista||"",empresaOrigem:m.empresaOrigem||""});
+    }
+  }
+  exportarCSV("movimentacoes_"+hojeArquivo()+".csv",[
+    {titulo:"Placa",valor:"placa"},{titulo:"Grupo",valor:"grupo"},{titulo:"Filial",valor:"filial"},
+    {titulo:"Status",valor:"status"},{titulo:"De",valor:"de"},{titulo:"Até",valor:"ate"},
+    {titulo:"KM inicial",valor:"kmInicial"},{titulo:"KM final",valor:"kmFinal"},
+    {titulo:"Motorista",valor:"motorista"},{titulo:"Empresa origem",valor:"empresaOrigem"}
+  ],linhas);
+}
+function expOrdensServico(){
+  const linhas=[];
+  for(const v of veiculosFiltrados()){
+    for(const os of v.mans){
+      for(const s of os.servicos){
+        if(!osServicoPassa(os,s)) continue;
+        linhas.push({numOS:os.numOS,placa:v.placa,modelo:s.modelo||v.grupo,data:dataBR(os.data),
+          fornecedor:(s.fornecedor||"").split(" - ")[0],finalidade:s.finalidade||"",
+          descricao:s.descricaoPeca||s.justificativa||"",tipo:s.tipo||"",qtde:s.qtde||"",
+          valor:fmtBRL(brl(s.vlrTotal))});
+      }
+    }
+  }
+  exportarCSV("ordens_de_servico_"+hojeArquivo()+".csv",[
+    {titulo:"Nº OS",valor:"numOS"},{titulo:"Placa",valor:"placa"},{titulo:"Modelo",valor:"modelo"},
+    {titulo:"Data",valor:"data"},{titulo:"Fornecedor",valor:"fornecedor"},{titulo:"Finalidade",valor:"finalidade"},
+    {titulo:"Descrição/Peça",valor:"descricao"},{titulo:"Tipo",valor:"tipo"},{titulo:"Qtde",valor:"qtde"},
+    {titulo:"Valor (R$)",valor:"valor"}
+  ],linhas);
+}
+function expContratos(incluirPessoais){
+  // aplica busca/filtro de status da aba contratos, se houver
+  let dados = CONTRATOS.slice();
+  const q=($("#q")&&ABA==="contratos")?$("#q").value.trim().toUpperCase():"";
+  const st=($("#fStatus")&&ABA==="contratos")?$("#fStatus").value:"";
+  if(q) dados=dados.filter(c=>c.busca.includes(q));
+  if(st) dados=dados.filter(c=>c.status===st);
+  const cols=[
+    {titulo:"Contrato",valor:"contrato"},{titulo:"Tipo",valor:"tipo"},{titulo:"Status",valor:c=>STATUS_LABEL[c.status]||c.status},
+    {titulo:"Cliente",valor:"cliente"},{titulo:"Placa",valor:"placa"},{titulo:"Veículo",valor:"veiculo"},
+    {titulo:"Grupo",valor:"grupo"},{titulo:"Loja",valor:"loja"},{titulo:"Entrega",valor:c=>dataBR(c.data_entrega)},
+    {titulo:"Assinatura",valor:c=>dataBR(c.data_assinatura)},{titulo:"Valor (R$)",valor:"valor"}
+  ];
+  if(incluirPessoais){
+    cols.push({titulo:"CPF",valor:"cpf"},{titulo:"E-mail",valor:"email"},{titulo:"Telefone",valor:"telefone"},{titulo:"Endereço",valor:"endereco"},{titulo:"Cidade",valor:"cidade"});
+  }
+  exportarCSV("contratos_"+hojeArquivo()+".csv",cols,dados);
+}
+function expTopVeiculos(){
+  const ag=agregarOS();
+  exportarCSV("veiculos_maiores_gastos_"+hojeArquivo()+".csv",[
+    {titulo:"Placa",valor:"placa"},{titulo:"Modelo/Grupo",valor:"modelo"},
+    {titulo:"Nº OS",valor:"nOS"},{titulo:"Custo total (R$)",valor:v=>fmtBRL(v.total)}
+  ],ag.topVeic);
+}
+function expFornecedores(){
+  const ag=agregarOS();
+  exportarCSV("gastos_por_fornecedor_"+hojeArquivo()+".csv",[
+    {titulo:"Fornecedor",valor:"nome"},{titulo:"Custo total (R$)",valor:f=>fmtBRL(f.total)}
+  ],ag.topForn);
+}
+function expModelos(){
+  const ag=agregarOS();
+  exportarCSV("gastos_por_modelo_"+hojeArquivo()+".csv",[
+    {titulo:"Modelo",valor:"nome"},{titulo:"Custo total (R$)",valor:m=>fmtBRL(m.total)}
+  ],ag.topModelo);
+}
+function expResumoExecutivo(){
+  const veics=veiculosFiltrados();
+  const sit={operacao:0,manutencao:0,disponivel:0,transito:0,fora:0,outro:0};
+  for(const v of veics) sit[situacao(v)]++;
+  const frotaTotal=veics.length, frotaAtual=frotaTotal-sit.fora;
+  const disp=frotaAtual>0?Math.round((frotaAtual-sit.manutencao)/frotaAtual*100):0;
+  const ag=agregarOS();
+  // resumo em formato "campo;valor" + blocos
+  const linhas=[];
+  const add=(a,b="")=>linhas.push({a,b});
+  add("RESUMO EXECUTIVO - CENTRAL DE GESTÃO DE FROTA");
+  add("Gerado em", new Date().toLocaleString("pt-BR"));
+  const periodoTxt={"6m":"Últimos 6 meses","12m":"Últimos 12 meses","atual":"Ano atual","anterior":"Ano anterior","tudo":"Todo o histórico","custom":`${FILTROS.de||"?"} a ${FILTROS.ate||"?"}`}[FILTROS.periodo];
+  add("Período", periodoTxt);
+  add("Filtros", [FILTROS.placa&&"Placa:"+FILTROS.placa,FILTROS.grupo&&"Grupo:"+FILTROS.grupo,FILTROS.filial&&"Filial:"+FILTROS.filial,FILTROS.status&&"Situação:"+SIT_LABEL[FILTROS.status],FILTROS.fornecedor&&"Fornecedor:"+FILTROS.fornecedor,FILTROS.tipoManut&&"Tipo:"+FILTROS.tipoManut].filter(Boolean).join(" | ")||"nenhum");
+  add("");
+  add("FROTA");
+  add("Frota total", frotaTotal); add("Frota atual", frotaAtual);
+  add("Em operação", sit.operacao); add("Em manutenção", sit.manutencao);
+  add("Fora da frota", sit.fora); add("Disponibilidade", disp+"%");
+  add("");
+  add("ORDENS DE SERVIÇO");
+  add("Total de OS", ag.totalOS); add("Custo total (R$)", fmtBRL(ag.custoTotal));
+  add("Custo médio por OS (R$)", fmtBRL(ag.totalOS?ag.custoTotal/ag.totalOS:0));
+  add("Custo médio por veículo (R$)", fmtBRL(frotaAtual?ag.custoTotal/frotaAtual:0));
+  add("");
+  add("10 VEÍCULOS QUE MAIS GASTARAM");
+  ag.topVeic.forEach((v,i)=>add(`${i+1}. ${v.placa} (${v.nOS} OS)`, "R$ "+fmtBRL(v.total)));
+  add("");
+  add("10 FORNECEDORES COM MAIOR CUSTO");
+  ag.topForn.forEach((f,i)=>add(`${i+1}. ${f.nome}`, "R$ "+fmtBRL(f.total)));
+  add("");
+  add("EVOLUÇÃO MENSAL");
+  ag.meses.forEach(([k,v])=>add(_nomeMes(k), "R$ "+fmtBRL(v)));
+  exportarCSV("resumo_executivo_"+hojeArquivo()+".csv",[{titulo:"Indicador",valor:"a"},{titulo:"Valor",valor:"b"}],linhas);
+}
+
+// menu de exportação (dropdown no cabeçalho)
+function toggleMenuExport(forcar){
+  const m=$("#menu-export"); if(!m) return;
+  const abrir = forcar!==undefined?forcar:m.style.display==="none";
+  m.style.display=abrir?"block":"none";
+}
+function acaoExport(qual){
+  toggleMenuExport(false);
+  const mapa={
+    frotaAtual:expFrotaAtual, todos:expTodosVeiculos, manutencao:expManutencao, fora:expFora,
+    mov:expMovimentacoes, os:expOrdensServico, topVeic:expTopVeiculos, forn:expFornecedores,
+    modelos:expModelos, resumo:expResumoExecutivo
+  };
+  if(qual==="contratos"){
+    const inc=confirm("Incluir dados pessoais (CPF, e-mail, telefone, endereço) na exportação de contratos?\n\nOK = incluir dados pessoais\nCancelar = exportar sem dados pessoais");
+    expContratos(inc); return;
+  }
+  if(mapa[qual]) mapa[qual]();
+}
+
+
+// Classifica pela string de status atual (último status de movimentação).
+function situacao(v){
+  if(v.foraFrota) return "fora";
+  const s=(v.statusAtual||"").toUpperCase();
+  if(s.includes("OFICINA")||s.includes("FUNILARIA")||s.includes("LAVAGEM")||s.includes("DELLAVIA")||s.includes("FUNIL")) return "manutencao";
+  if(s.includes("LOCADO")||s.includes("USO INTERNO")||s.includes("DIRETORIA")) return "operacao";
+  if(s.includes("TRANSFER")||s.includes("RETORNO")||s.includes("AGUARDANDO")) return "transito";
+  if(s.includes("DISPON")||s.includes("ESTACIONAMENTO")||s.includes("GATE")) return "disponivel";
+  return "outro";
+}
+const SIT_LABEL = {operacao:"Em operação",manutencao:"Em manutenção",disponivel:"Disponível",transito:"Em trânsito",fora:"Fora da frota",outro:"Outros"};
+
+async function baixarPDF(url, nomeArquivo, botao){
+  const txtOrig = botao ? botao.textContent : null;
+  try{
+    if(botao){ botao.textContent="Baixando…"; botao.style.pointerEvents="none"; }
+    const r = await fetch(url);
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    const blob = await r.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = nomeArquivo;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+  }catch(e){
+    // fallback: abre em nova aba se o download falhar
+    window.open(url, "_blank", "noopener");
+  }finally{
+    if(botao){ botao.textContent=txtOrig; botao.style.pointerEvents=""; }
+  }
+}
+const DADOS_CONTRATOS = "contratos.gzdata";
+let CONTRATOS = [], CVIEW = [], CSEL = null;
+const STATUS_LABEL = {abertas:"Aberto", atrasadas:"Atrasado", fechadas:"Fechado", renovadas:"Renovado"};
+
+let VEIC = [], VIEW = [], SEL = null, MODE = "tl", ORD = "desc", ABA = "painel";
+let rawMov = null, rawMan = null, manFiles = null;   // linhas cruas por tipo
+let LAST_UPDATE = null;   // timestamp (ms) do carregamento dos dados
+
+/* ---------- CSV ---------- */
+function parseCSV(text){
+  if(text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  const rows = []; let row = [], cell = "", q = false;
+  for(let i=0;i<text.length;i++){
+    const c = text[i];
+    if(q){ if(c === '"'){ if(text[i+1] === '"'){ cell+='"'; i++; } else q=false; } else cell+=c; }
+    else if(c === '"') q=true;
+    else if(c === ';'){ row.push(cell); cell=""; }
+    else if(c === '\n'){ row.push(cell); rows.push(row); row=[]; cell=""; }
+    else if(c !== '\r') cell+=c;
+  }
+  if(cell || row.length){ row.push(cell); rows.push(row); }
+  const head = rows.shift().map(h=>h.trim());
+  return rows.filter(r=>r.length>1).map(r=>{ const o={}; head.forEach((h,i)=>o[h]=(r[i]??"").trim()); return o; });
+}
+
+const ts = s => { const m=/^(\d{2})\/(\d{2})\/(\d{4})[ ]?(\d{2})?:?(\d{2})?/.exec(s||""); 
+  return m?new Date(+m[3],+m[2]-1,+m[1],+(m[4]||0),+(m[5]||0)).getTime():0; };
+const num = s => { const n=parseInt(String(s).replace(/\D/g,""),10); return isNaN(n)?null:n; };
+const brl = s => { const n=parseFloat(String(s).replace(/\./g,'').replace(',','.')); return isNaN(n)?0:n; };
+const fmtBRL = n => n.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
+const days = (a,b) => (!a||!b)?null:Math.round((b-a)/864e5);
+const dur = d => d===null?"":d===0?"mesmo dia":d===1?"1 dia":d+" dias";
+const plate7 = s => (s||"").split(" - ")[0].replace(/[^A-Za-z0-9]/g,"").trim().toUpperCase().slice(0,7);
+const esc = s => String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+/* ---------- detectar tipo de CSV ---------- */
+function classify(rows){
+  if(!rows.length) return null;
+  const k = Object.keys(rows[0]);
+  if(k.includes("placaChassi") && k.includes("kmInicial")) return "mov";
+  if(k.includes("numOS") && (k.includes("descricaoPeca") || k.includes("vlrTotal"))) return "man";
+  if(k.includes("numOS") && k.includes("placa")) return "man-cab";
+  return null;
+}
+
+/* ---------- montar veículos ---------- */
+function build(){
+  const map = new Map();
+  // movimentação define os veículos
+  for(const r of rawMov){
+    const key = r.placaChassi; if(!key) continue;
+    if(!map.has(key)){
+      const [placa,chassi] = key.split(" - ");
+      map.set(key,{ key, placa:(placa||key).trim(), chassi:(chassi||"").trim(),
+        placaKey: plate7(key),
+        filial:r.filial, grupo:r.grupo, movs:[], mans:[] });
+    }
+    map.get(key).movs.push(r);
+  }
+  // índice placa -> veículo (usa a MESMA normalização das OS)
+  const porPlaca = new Map();
+  for(const v of map.values()) porPlaca.set(v.placaKey, v);
+
+  // manutenção: agrupa serviços por numOS, liga por placa
+  // deduplica por OS INTEIRA: se a mesma OS vier em dois arquivos (sobreposição),
+  // a primeira ocorrência vale e a repetição é ignorada por completo — assim
+  // serviços legítimos iguais dentro de uma OS são preservados.
+  if(rawMan){
+    const osMap = new Map();
+    for(const s of rawMan){
+      if(!osMap.has(s.numOS)){
+        osMap.set(s.numOS,{ numOS:s.numOS, placa:plate7(s.placa),
+          modelo:s.modelo||"", km:s.km||"", filial:s.filialLoja||s.filial||"",
+          cliente:s.cliente||"", data:s.dtOcorrencia||s.solicitacao||"", servicos:[s], _fonte:s.__src });
+      } else {
+        const os = osMap.get(s.numOS);
+        // só acumula serviços da MESMA leitura original; repetição de outro arquivo é ignorada
+        if(os._fonte === s.__src) os.servicos.push(s);
+      }
+    }
+    for(const os of osMap.values()){
+      os.total = os.servicos.reduce((t,x)=>t+brl(x.vlrTotal),0);
+      const v = porPlaca.get(os.placa);
+      if(v) v.mans.push(os);
+      else { // veículo fora da frota atual — só tem histórico de manutenção
+        const key = os.placa;
+        if(!map.has(key)) map.set(key,{ key, placa:os.placa, chassi:"", filial:os.filial,
+          grupo:"—", movs:[], mans:[], foraFrota:true });
+        map.get(key).mans.push(os);
+      }
+    }
+  }
+
+  return [...map.values()].map(v=>{
+    v.movs.sort((a,b)=>ts(a.de)-ts(b.de));
+    v.mans.sort((a,b)=>ts(a.data)-ts(b.data));
+    const last = v.movs[v.movs.length-1];
+    v.statusAtual = last ? last.status : (v.foraFrota ? "Fora da frota" : "—");
+    v.desde = last ? last.de : "";
+    const kms = v.movs.map(m=>num(m.kmFinal)).filter(n=>n!==null);
+    v.kmAtual = kms.length?Math.max(...kms):null;
+    v.totalMov = v.movs.length; v.totalMan = v.mans.length;
+    v.custoMan = v.mans.reduce((t,m)=>t+m.total,0);
+    v.busca = (v.placa+" "+v.chassi+" "+v.grupo).toUpperCase();
+    return v;
+  }).sort((a,b)=>a.placa.localeCompare(b.placa,"pt-BR"));
+}
+
+/* ---------- filtros + lista ---------- */
+function opts(sel,vals){ const keep=sel.value;
+  sel.innerHTML=sel.firstElementChild.outerHTML+vals.map(v=>`<option>${esc(v)}</option>`).join("");
+  sel.value=keep; }
+
+function applyFilters(){
+  if(ABA==="contratos"){ applyFiltersContratos(); return; }
+  const q=$("#q").value.trim().toUpperCase();
+  const f=$("#fFilial").value,g=$("#fGrupo").value,s=$("#fStatus").value,fr=$("#fFrota").value;
+  VIEW=VEIC.filter(v=>(!q||v.busca.includes(q))&&(!f||v.filial===f)&&(!g||v.grupo===g)&&(!s||v.statusAtual===s)
+    &&(!fr||(fr==="ativa"?!v.foraFrota:v.foraFrota))
+    &&(ABA==="tudo" || (ABA==="mov"?v.totalMov>0:v.totalMan>0)));
+  renderList();
+}
+
+/* ---------- Contratos ---------- */
+function applyFiltersContratos(){
+  const q=$("#q").value.trim().toUpperCase();
+  const st=$("#fStatus").value; // reutiliza o select de status
+  CVIEW=CONTRATOS.filter(c=>(!q||c.busca.includes(q))&&(!st||c.status===st));
+  renderContratos();
+}
+function statusCorContrato(s){
+  if(s==="abertas") return "locado";
+  if(s==="atrasadas") return "manut";
+  if(s==="fechadas") return "outro";
+  if(s==="renovadas") return "disp";
+  return "outro";
+}
+function renderContratos(){
+  const n=CVIEW.length;
+  $("#count").textContent = n===CONTRATOS.length?`${n.toLocaleString("pt-BR")} contratos`
+    :`${n.toLocaleString("pt-BR")} de ${CONTRATOS.length.toLocaleString("pt-BR")}`;
+  const frag=document.createDocumentFragment();
+  for(const c of CVIEW.slice(0,500)){
+    const el=document.createElement("div"); el.className="item"; el.setAttribute("role","option");
+    el.setAttribute("aria-selected",CSEL===c.arquivo); el.dataset.arq=c.arquivo;
+    const val = c.valor?`<span class="custo">R$ ${esc(c.valor)}</span>`:"";
+    el.innerHTML=
+      `<span class="dot ${statusCorContrato(c.status)}"></span>`+
+      `<span class="plate mono">${esc(c.contrato)}</span>`+
+      `<span class="n"><span class="w">${esc(STATUS_LABEL[c.status]||c.status)}</span></span>`+
+      `<span class="sub">${esc(c.cliente)}${c.placa?" · "+esc(c.placa):""}</span>`+
+      `<span class="sub2">${val}</span>`;
+    frag.appendChild(el);
+  }
+  const list=$("#list"); list.innerHTML=""; list.appendChild(frag);
+  if(CVIEW.length>500){ const m=document.createElement("div"); m.className="count";
+    m.style.borderTop="1px solid var(--rule)"; m.textContent="Mostrando 500. Refine a busca."; list.appendChild(m); }
+}
+function renderContratoDetail(c){
+  const d=$("#detail");
+  const linha=(rot,val)=> val?`<div class="ev-facts"><span><b>${rot}:</b> ${esc(val)}</span></div>`:"";
+  d.innerHTML=`
+    <div class="head-row"><div>
+      <h2 class="mono">Contrato ${esc(c.contrato)}</h2>
+      <div class="chassi mono">${esc(c.tipo||"—")}</div>
+    </div></div>
+    <div class="meta">
+      <span class="tag">${esc(STATUS_LABEL[c.status]||c.status)}</span>
+      ${c.placa?`<span class="tag km mono">${esc(c.placa)}</span>`:""}
+      ${c.grupo?`<span class="tag km">${esc(c.grupo)}</span>`:""}
+      ${c.valor?`<span class="tag man">R$ ${esc(c.valor)}</span>`:""}
+      ${c.data_entrega?`<span class="tag km">Entrega ${esc(c.data_entrega.split(" ")[0])}</span>`:""}
+    </div>
+    <div class="cliente-box">
+      <table class="full"><tbody>
+        <tr><td><b>Cliente</b></td><td>${esc(c.cliente)}${c.cliente_id?" (#"+esc(c.cliente_id)+")":""}</td></tr>
+        ${c.cpf?`<tr><td><b>CPF</b></td><td class="mono">${esc(c.cpf)}</td></tr>`:""}
+        ${c.email?`<tr><td><b>E-mail</b></td><td>${esc(c.email)}</td></tr>`:""}
+        ${c.telefone?`<tr><td><b>Telefone</b></td><td class="mono">${esc(c.telefone)}</td></tr>`:""}
+        ${c.endereco?`<tr><td><b>Endereço</b></td><td>${esc(c.endereco)}</td></tr>`:""}
+        ${c.veiculo?`<tr><td><b>Veículo</b></td><td>${esc(c.veiculo)}</td></tr>`:""}
+        ${c.loja?`<tr><td><b>Loja</b></td><td>${esc(c.loja)}</td></tr>`:""}
+        ${c.data_assinatura?`<tr><td><b>Assinatura</b></td><td class="mono">${esc(c.data_assinatura)}</td></tr>`:""}
+      </tbody></table>
+    </div>
+    ${c.observacao?`<div class="hint"><b>Observação:</b> ${esc(c.observacao)}</div>`:""}
+    <div class="man-foot" style="margin-top:20px">
+      <a class="pdf-btn" href="${contratoPDF(c)}" target="_blank" rel="noopener">📄 Abrir contrato (PDF)</a>
+      <button class="pdf-btn dl-btn" data-url="${contratoPDF(c)}" data-nome="Contrato_${esc((c.contrato||'').replace('/','-'))}.pdf">⬇ Baixar</button>
+    </div>`;
+  d.scrollTop=0;
+}
+function statusCor(v){
+  if(v.foraFrota) return "fora";
+  const s=(v.statusAtual||"").toUpperCase();
+  if(s.includes("LOCADO")) return "locado";
+  if(s.includes("DISPON")) return "disp";
+  if(s.includes("VENDID")) return "vend";
+  if(s.includes("OFICINA")||s.includes("FUNIL")||s.includes("MANUT")) return "manut";
+  if(s.includes("TRANSFER")) return "transf";
+  return "outro";
+}
+function renderList(){
+  const n=VIEW.length;
+  $("#count").textContent = n===VEIC.length?`${n.toLocaleString("pt-BR")} veículos`
+    :`${n.toLocaleString("pt-BR")} de ${VEIC.length.toLocaleString("pt-BR")}`;
+  const frag=document.createDocumentFragment();
+  for(const v of VIEW.slice(0,500)){
+    const el=document.createElement("div"); el.className="item"; el.setAttribute("role","option");
+    el.setAttribute("aria-selected",SEL===v.key); el.dataset.key=v.key;
+    const wrench = v.totalMan?`<span class="w" title="${v.totalMan} ordens de serviço">🔧 ${v.totalMan}</span>`:"";
+    const custo = v.custoMan>0?`<span class="custo">R$ ${fmtBRL(v.custoMan)}</span>`:"";
+    el.innerHTML=
+      `<span class="dot ${statusCor(v)}"></span>`+
+      `<span class="plate mono">${esc(v.placa)}</span>`+
+      `<span class="n">${wrench}</span>`+
+      `<span class="sub">${esc(v.foraFrota?"Fora da frota":v.statusAtual)}${v.grupo&&v.grupo!=="—"?" · "+esc(v.grupo):""}</span>`+
+      `<span class="sub2">${custo}</span>`;
+    frag.appendChild(el);
+  }
+  const list=$("#list"); list.innerHTML=""; list.appendChild(frag);
+  if(VIEW.length>500){ const m=document.createElement("div"); m.className="count";
+    m.style.borderTop="1px solid var(--rule)"; m.textContent="Mostrando 500. Refine a busca."; list.appendChild(m); }
+}
+
+/* ---------- detalhe ---------- */
+function renderDetail(v){
+  const d=$("#detail");
+  const kmIni=v.movs.length?num(v.movs[0].kmInicial):null;
+  const rodado=(v.kmAtual!==null&&kmIni!==null)?v.kmAtual-kmIni:null;
+  const span=v.movs.length?days(ts(v.movs[0].de),Date.now()):null;
+
+  // eventos unificados
+  const eventos=[];
+  if(ABA!=="os") v.movs.forEach((m,i)=>eventos.push({tipo:"mov",data:ts(m.de),m,i}));
+  if(ABA!=="mov") v.mans.forEach(os=>eventos.push({tipo:"man",data:ts(os.data),os}));
+  eventos.sort((a,b)=>a.data-b.data);
+  if(ORD==="desc") eventos.reverse();
+
+  let body;
+  if(MODE==="tl"){
+    body=`<div class="tl">`+eventos.map(ev=>{
+      if(ev.tipo==="man") return manCard(ev.os);
+      const m=ev.m,i=ev.i,open=m.emAberto==="true";
+      const a=ts(m.de),b=open?Date.now():ts(m.ate);
+      const ki=num(m.kmInicial),kf=num(m.kmFinal),rod=(ki!==null&&kf!==null)?kf-ki:null;
+      const prev=i?num(v.movs[i-1].kmFinal):null, salto=(prev!==null&&ki!==null&&prev!==ki);
+      const facts=[];
+      if(ki!==null) facts.push(`<span>km <b class="mono">${ki.toLocaleString("pt-BR")}</b>${kf!==null&&kf!==ki?` → <b class="mono">${kf.toLocaleString("pt-BR")}</b>`:""}${rod?` (+${rod.toLocaleString("pt-BR")})`:""}</span>`);
+      if(m.motorista) facts.push(`<span>${esc(m.motorista)}</span>`);
+      if(salto) facts.push(`<span class="jump">hodômetro saltou de ${prev.toLocaleString("pt-BR")}</span>`);
+      return `<div class="ev${open?" open":""}">
+        <div class="ev-status">${esc(m.status)}${open?" · em aberto":""}</div>
+        <div class="ev-when mono">${esc(m.de)}${open?" — agora":" — "+esc(m.ate)}${dur(days(a,b))?` · ${dur(days(a,b))}`:""}</div>
+        ${m.empresaOrigem&&m.empresaOrigem!==v.filial?`<div class="ev-where">${esc(m.empresaOrigem)}</div>`:""}
+        <div class="ev-facts">${facts.join("")}</div></div>`;
+    }).join("")+`</div>`;
+  } else {
+    body=`<table class="full"><thead><tr><th>Data</th><th>Tipo</th><th>Status / Serviço</th>
+      <th>Local / Fornecedor</th><th>Km</th><th class="r">Valor</th></tr></thead><tbody>`+
+      eventos.map(ev=>{
+        if(ev.tipo==="man"){ const os=ev.os;
+          return `<tr class="man os-click" data-os="${esc(os.numOS)}" title="Abrir PDF da OS ${esc(os.numOS)}"><td class="mono">${esc((os.data||"").split(" ")[0])}</td>
+            <td>🔧 OS ${esc(os.numOS)} ↗</td><td>${os.servicos.length} serviço(s)</td>
+            <td>${esc(os.servicos[0]?.fornecedor||"")}</td><td class="mono">${esc(os.km)}</td>
+            <td class="r">R$ ${fmtBRL(os.total)}</td></tr>`;
+        }
+        const m=ev.m,open=m.emAberto==="true";
+        return `<tr class="${open?"open":""}"><td class="mono">${esc((m.de||"").split(" ")[0])}</td>
+          <td>↔</td><td>${esc(m.status)}</td><td>${esc(m.empresaOrigem)}</td>
+          <td class="mono">${esc(m.kmInicial)}→${esc(m.kmFinal)}</td><td class="r"></td></tr>`;
+      }).join("")+`</tbody></table>`;
+  }
+
+  d.innerHTML=`
+    <div class="head-row"><div>
+      <h2 class="mono">${esc(v.placa)}</h2>
+      <div class="chassi mono">${esc(v.chassi||"—")}</div>
+    </div></div>
+    <div class="meta">
+      <span class="tag">${esc(v.statusAtual)}${v.desde?" desde "+esc(v.desde.split(" ")[0]):""}</span>
+      <span class="tag km">${esc(v.grupo)}</span>
+      <span class="tag km">${esc(v.filial)}</span>
+      <span class="tag km">${v.totalMov} movimentações</span>
+      ${v.totalMan?`<span class="tag man">🔧 ${v.totalMan} OS · R$ ${fmtBRL(v.custoMan)}</span>`:""}
+      ${v.kmAtual!==null?`<span class="tag km mono">${v.kmAtual.toLocaleString("pt-BR")} km</span>`:""}
+      ${rodado!==null?`<span class="tag km mono">+${rodado.toLocaleString("pt-BR")} km em ${span} dias</span>`:""}
+    </div>
+    ${!rawMan?`<div class="hint">Carregue também o CSV de manutenção para ver as OS na linha do tempo.</div>`:""}
+    <div class="toggle">
+      <button data-mode="tl" aria-pressed="${MODE==="tl"}">Linha do tempo</button>
+      <button data-mode="tb" aria-pressed="${MODE==="tb"}">Tabela</button>
+      <span class="actions">
+        ${MODE==="tl"?`<button id="ord">${ORD==="desc"?"Mais recente primeiro":"Mais antiga primeiro"}</button>`:""}
+        <div class="export-wrap" style="display:inline-block">
+          <button id="btn-relv">⤓ Baixar relatório ▾</button>
+          <div class="menu-export" id="menu-relv" style="display:none">
+            <button data-relv="completo">Relatório completo (CSV)</button>
+            <button data-relv="mov">Só movimentações</button>
+            <button data-relv="os">Só ordens de serviço</button>
+            ${v.totalMan?`<button data-relv="pdfs">Baixar PDFs das OS (${v.totalMan})</button>`:""}
+          </div>
+        </div>
+      </span>
+    </div>
+    ${body}`;
+  d.scrollTop=0;
+
+  d.querySelectorAll(".toggle button[data-mode]").forEach(b=>b.onclick=()=>{MODE=b.dataset.mode;renderDetail(v);});
+  const ob=$("#ord"); if(ob) ob.onclick=()=>{ORD=ORD==="desc"?"asc":"desc";renderDetail(v);};
+  const bRel=$("#btn-relv");
+  if(bRel){
+    bRel.onclick=e=>{e.stopPropagation(); const m=$("#menu-relv"); m.style.display=m.style.display==="none"?"block":"none";};
+    document.querySelectorAll("#menu-relv button[data-relv]").forEach(b=>b.onclick=()=>{
+      $("#menu-relv").style.display="none"; relatorioVeiculo(v,b.dataset.relv);
+    });
+    document.addEventListener("click",()=>{const m=$("#menu-relv"); if(m) m.style.display="none";},{once:true});
+  }
+  d.querySelectorAll(".man-head").forEach(h=>h.onclick=()=>h.closest(".man-card").classList.toggle("open"));
+  d.querySelectorAll(".os-click").forEach(tr=>tr.onclick=()=>{
+    window.open(pdfURL(tr.dataset.os), "_blank", "noopener");
+  });
+}
+
+function manCard(os){
+  const rows=os.servicos.map(s=>`<tr>
+    <td>${esc(s.descricaoPeca||s.justificativa||"")}</td>
+    <td>${esc(s.tipo||"")}</td>
+    <td class="r mono">${esc(s.qtde||"")}</td>
+    <td class="r mono">R$ ${fmtBRL(brl(s.vlrTotal))}</td></tr>`).join("");
+  const forn=[...new Set(os.servicos.map(s=>s.fornecedor).filter(Boolean))].join(", ");
+  return `<div class="ev man">
+    <div class="ev-status">Manutenção — OS ${esc(os.numOS)}</div>
+    <div class="ev-when mono">${esc((os.data||"").split(" ")[0])}${forn?" · "+esc(forn):""}</div>
+    <div class="man-card">
+      <div class="man-head">
+        <span class="arrow">▸</span>
+        <span>${os.servicos.length} serviço(s)${os.km?` · ${esc(os.km)} km`:""}</span>
+        <span class="val">R$ ${fmtBRL(os.total)}</span>
+      </div>
+      <div class="man-body">
+        <table><thead><tr><th>Serviço / Peça</th><th>Tipo</th><th class="r">Qtd</th><th class="r">Valor</th></tr></thead>
+        <tbody>${rows}</tbody></table>
+        <div class="man-foot">
+          <a class="pdf-btn" href="${pdfURL(os.numOS)}" target="_blank" rel="noopener">📄 Abrir PDF da OS</a>
+          <button class="pdf-btn dl-btn" data-url="${pdfURL(os.numOS)}" data-nome="OS_${esc(os.numOS)}.pdf">⬇ Baixar</button>
+          <span class="tot">Total: <b>R$ ${fmtBRL(os.total)}</b></span>
+        </div>
+      </div>
+    </div></div>`;
+}
+
+function exportOne(v){
+  const linhas=[];
+  v.movs.forEach(m=>linhas.push({tipo:"movimentacao",data:m.de,status:m.status,
+    local:m.empresaOrigem,kmIni:m.kmInicial,kmFim:m.kmFinal,motorista:m.motorista,
+    os:"",servico:"",fornecedor:"",valor:""}));
+  v.mans.forEach(os=>os.servicos.forEach(s=>linhas.push({tipo:"manutencao",data:os.data,
+    status:"",local:"",kmIni:os.km,kmFim:"",motorista:"",os:os.numOS,
+    servico:s.descricaoPeca||s.justificativa,fornecedor:s.fornecedor,valor:s.vlrTotal})));
+  linhas.sort((a,b)=>ts(a.data)-ts(b.data));
+  const cols=Object.keys(linhas[0]);
+  const e=v=>`"${String(v??"").replace(/"/g,'""')}"`;
+  const csv="\uFEFF"+[cols.join(";"),...linhas.map(l=>cols.map(c=>e(l[c])).join(";"))].join("\n");
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
+  a.download=`${v.placa}.csv`; a.click();
+}
+
+// Relatório individual do veículo — modos: completo, mov, os, pdfs
+function relatorioVeiculo(v, modo){
+  const nome=(sufixo)=>`veiculo_${v.placa}_${sufixo}_${hojeArquivo()}.csv`;
+  if(modo==="mov"){
+    exportarCSV(nome("movimentacoes"),[
+      {titulo:"Data de",valor:m=>dataBR(m.de)},{titulo:"Data até",valor:m=>dataBR(m.ate)},
+      {titulo:"Status",valor:"status"},{titulo:"KM inicial",valor:"kmInicial"},{titulo:"KM final",valor:"kmFinal"},
+      {titulo:"Motorista",valor:"motorista"},{titulo:"Empresa origem",valor:"empresaOrigem"}
+    ],v.movs); return;
+  }
+  if(modo==="os"){
+    const linhas=[];
+    v.mans.forEach(os=>os.servicos.forEach(s=>linhas.push({os,s})));
+    exportarCSV(nome("ordens_servico"),[
+      {titulo:"Nº OS",valor:x=>x.os.numOS},{titulo:"Data",valor:x=>dataBR(x.os.data)},
+      {titulo:"Fornecedor",valor:x=>(x.s.fornecedor||"").split(" - ")[0]},{titulo:"Finalidade",valor:x=>x.s.finalidade||""},
+      {titulo:"Descrição/Peça",valor:x=>x.s.descricaoPeca||x.s.justificativa||""},{titulo:"Tipo",valor:x=>x.s.tipo||""},
+      {titulo:"Qtde",valor:x=>x.s.qtde||""},{titulo:"Valor (R$)",valor:x=>fmtBRL(brl(x.s.vlrTotal))}
+    ],linhas); return;
+  }
+  if(modo==="pdfs"){
+    // baixa os PDFs das OS do veículo, um a um (reusa baixarPDF do R2)
+    const oss=[...new Set(v.mans.map(os=>os.numOS))];
+    if(!oss.length) return;
+    if(!confirm(`Baixar ${oss.length} PDF(s) de OS do veículo ${v.placa}?\nOs downloads começarão em sequência.`)) return;
+    oss.forEach((num,i)=>setTimeout(()=>baixarPDF(pdfURL(num),`OS_${num}.pdf`,null), i*800));
+    return;
+  }
+  // completo: cabeçalho do veículo + histórico unificado
+  const linhas=[];
+  linhas.push({campo:"RELATÓRIO DO VEÍCULO",valor:v.placa});
+  linhas.push({campo:"Modelo/Grupo",valor:v.grupo});
+  linhas.push({campo:"Chassi",valor:v.chassi});
+  linhas.push({campo:"Filial",valor:v.filial});
+  linhas.push({campo:"Situação",valor:SIT_LABEL[situacao(v)]});
+  linhas.push({campo:"Status atual",valor:v.statusAtual});
+  linhas.push({campo:"KM atual",valor:v.kmAtual??""});
+  linhas.push({campo:"Nº movimentações",valor:v.totalMov});
+  linhas.push({campo:"Nº de OS",valor:v.totalMan});
+  linhas.push({campo:"Custo total OS (R$)",valor:fmtBRL(v.custoMan)});
+  linhas.push({campo:"Custo médio por OS (R$)",valor:fmtBRL(v.totalMan?v.custoMan/v.totalMan:0)});
+  linhas.push({campo:"",valor:""});
+  linhas.push({campo:"HISTÓRICO (movimentações + OS)",valor:""});
+  const ev=[];
+  v.movs.forEach(m=>ev.push({data:m.de,tipo:"Movimentação",detalhe:m.status,extra:`${m.kmInicial}→${m.kmFinal} km`,valor:""}));
+  v.mans.forEach(os=>os.servicos.forEach(s=>ev.push({data:os.data,tipo:"OS "+os.numOS,detalhe:s.descricaoPeca||s.justificativa||"",extra:(s.fornecedor||"").split(" - ")[0],valor:fmtBRL(brl(s.vlrTotal))})));
+  ev.sort((a,b)=>ts(a.data)-ts(b.data));
+  ev.forEach(e=>linhas.push({campo:dataBR(e.data)+" · "+e.tipo,valor:`${e.detalhe}${e.extra?" · "+e.extra:""}${e.valor?" · R$ "+e.valor:""}`}));
+  exportarCSV(nome("relatorio_completo"),[{titulo:"Campo",valor:"campo"},{titulo:"Valor",valor:"valor"}],linhas);
+}
+
+/* ---------- eventos UI ---------- */
+$("#list").addEventListener("click",e=>{
+  const it=e.target.closest(".item"); if(!it) return;
+  if(ABA==="contratos"){
+    CSEL=it.dataset.arq;
+    $("#list").querySelectorAll(".item").forEach(x=>x.setAttribute("aria-selected",x.dataset.arq===CSEL));
+    renderContratoDetail(CONTRATOS.find(c=>c.arquivo===CSEL));
+    return;
+  }
+  SEL=it.dataset.key;
+  $("#list").querySelectorAll(".item").forEach(x=>x.setAttribute("aria-selected",x.dataset.key===SEL));
+  renderDetail(VEIC.find(v=>v.key===SEL));
+});
+["#q","#fFrota","#fFilial","#fGrupo","#fStatus"].forEach(s=>{
+  const el=$(s); el.addEventListener(el.tagName==="SELECT"?"change":"input",applyFilters);
+});
+// Botões "Baixar" (OS e contratos) — delegação no painel de detalhe
+$("#detail").addEventListener("click",e=>{
+  const b=e.target.closest(".dl-btn"); if(!b) return;
+  e.preventDefault();
+  baixarPDF(b.dataset.url, b.dataset.nome, b);
+});
+document.querySelectorAll(".aba").forEach(b=>b.onclick=()=>{
+  ABA=b.dataset.aba;
+  document.querySelectorAll(".aba").forEach(x=>x.setAttribute("aria-pressed", x.dataset.aba===ABA));
+  ajustarUIporAba();
+  if(ABA==="painel"){
+    SEL=null; CSEL=null;
+    renderPainel();
+    return;
+  }
+  if(ABA==="contratos"){
+    applyFilters();
+    CSEL=null;
+    $("#detail").innerHTML='<div class="empty"><div>Escolha um contrato à esquerda.</div></div>';
+    return;
+  }
+  applyFilters();
+  // se o veículo selecionado sumir da lista filtrada, limpa o detalhe; senão re-renderiza
+  const aindaVisivel = VIEW.some(v=>v.key===SEL);
+  if(SEL && aindaVisivel) renderDetail(VEIC.find(v=>v.key===SEL));
+  else { SEL=null; if(ABA==="os") renderDashboardOS(); else renderDashboard(); }
+});
+
+// Mostra/esconde filtros conforme a aba. Contratos usa só busca + status.
+function ajustarUIporAba(){
+  const ehPainel = ABA==="painel";
+  // no Painel, esconde a barra de busca/filtros e a lista lateral — o painel ocupa tudo
+  $("#side").classList.toggle("painel-mode", ehPainel);
+  const ehContrato = ABA==="contratos";
+  $("#fFrota").style.display  = ehContrato?"none":"";
+  $("#fFilial").style.display = ehContrato?"none":"";
+  $("#fGrupo").style.display  = ehContrato?"none":"";
+  $("#q").placeholder = ehContrato?"Cliente, placa, CPF ou nº do contrato":"Placa, chassi ou modelo";
+  const fs=$("#fStatus");
+  if(ehContrato){
+    if(fs.dataset.modo!=="contrato"){
+      fs.dataset.veicHTML = fs.innerHTML; // guarda opções de veículo
+      fs.innerHTML='<option value="">Qualquer status</option>'+
+        Object.entries(STATUS_LABEL).map(([k,v])=>`<option value="${k}">${v}</option>`).join("");
+      fs.dataset.modo="contrato";
+    }
+  } else {
+    if(fs.dataset.modo==="contrato" && fs.dataset.veicHTML){
+      fs.innerHTML=fs.dataset.veicHTML; fs.dataset.modo="veic";
+    }
+  }
+  fs.value="";
+}
+$("#reload").onclick=()=>location.reload();
+
+/* ---------- carregamento de arquivos ---------- */
+function ingest(files){
+  let pend=files.length;
+  for(const f of files){
+    const fr=new FileReader();
+    fr.onload=()=>{
+      try{
+        const rows=parseCSV(fr.result);
+        const t=classify(rows);
+        if(t==="mov"){ rawMov=rows; markSlot("mov",f.name,rows.length); }
+        else if(t==="man"){ rows.forEach(r=>r.__src=f.name); rawMan=(rawMan||[]).concat(rows);
+          manFiles=(manFiles||[]); manFiles.push(f.name);
+          markSlotMan(); }
+        else if(t==="man-cab"){ /* cabeçalho puro: guarda placa por OS para enriquecer */
+          window.__cab=rows; markSlot("man",f.name+" (cabeçalho)",rows.length); }
+        else $("#status").textContent="Arquivo não reconhecido: "+f.name;
+      }catch(err){ $("#status").textContent="Erro em "+f.name+": "+err.message; }
+      if(--pend===0) afterIngest();
+    };
+    fr.readAsText(f,"utf-8");
+  }
+}
+function markSlot(kind,name,n){
+  const el=$("#slot-"+kind); el.classList.remove("wait"); el.classList.add("ok");
+  el.querySelector(".st").textContent=n.toLocaleString("pt-BR")+" linhas";
+  el.querySelector(".t2").textContent=name;
+}
+function markSlotMan(){
+  const el=$("#slot-man"); el.classList.remove("wait"); el.classList.add("ok");
+  el.querySelector(".st").textContent=rawMan.length.toLocaleString("pt-BR")+" linhas";
+  const nf=manFiles.length;
+  el.querySelector(".t2").textContent = nf===1 ? manFiles[0] : `${nf} arquivos combinados`;
+}
+function afterIngest(){
+  // se veio cabeçalho separado + serviços sem placa, enriquece
+  if(window.__cab && rawMan){
+    const placaPorOS=Object.fromEntries(window.__cab.map(c=>[c.numOS,c]));
+    rawMan.forEach(s=>{ if(!s.placa && placaPorOS[s.numOS]){ const c=placaPorOS[s.numOS];
+      s.placa=c.placa; s.modelo=c.modelo; s.km=c.km; s.filialLoja=c.filialLoja; s.cliente=c.cliente;
+      s.dtOcorrencia=c.dtOcorrencia; } });
+  }
+  $("#go").disabled = !rawMov;
+  $("#status").textContent = rawMov
+    ? (rawMan?"Movimentação e manutenção carregadas.":"Movimentação carregada. Manutenção é opcional.")
+    : "Falta o CSV de movimentação.";
+}
+function abrir(){
+  if(!rawMov) return;
+  if(!LAST_UPDATE) LAST_UPDATE = Date.now();
+  VEIC=build();
+  opts($("#fFilial"),[...new Set(VEIC.map(v=>v.filial))].sort());
+  opts($("#fGrupo"),[...new Set(VEIC.map(v=>v.grupo))].sort());
+  opts($("#fStatus"),[...new Set(VEIC.map(v=>v.statusAtual))].sort());
+  $("#drop").style.display="none"; $("#app").style.display="grid";
+  applyFilters();
+  ajustarUIporAba();   // aba inicial é "painel" → esconde lista lateral
+  renderPainel();
+}
+
+// Dashboard analítico da aba Ordens de Serviço
+// Agrega todos os dados de OS uma vez (reutilizado pelo Painel e pela aba OS)
+/* ---------- FILTROS GLOBAIS DO PAINEL ---------- */
+const FILTROS = { periodo:"12m", de:null, ate:null, placa:"", modelo:"", grupo:"", filial:"", status:"", fornecedor:"", tipoManut:"" };
+
+// intervalo [inicio,fim] em ms conforme o período escolhido
+function intervaloPeriodo(){
+  const agora=new Date();
+  const y=agora.getFullYear(), m=agora.getMonth();
+  if(FILTROS.periodo==="6m"){ const i=new Date(y,m-5,1); return [i.getTime(), Infinity]; }
+  if(FILTROS.periodo==="12m"){ const i=new Date(y,m-11,1); return [i.getTime(), Infinity]; }
+  if(FILTROS.periodo==="atual"){ return [new Date(y,0,1).getTime(), new Date(y,11,31,23,59).getTime()]; }
+  if(FILTROS.periodo==="anterior"){ return [new Date(y-1,0,1).getTime(), new Date(y-1,11,31,23,59).getTime()]; }
+  if(FILTROS.periodo==="custom" && FILTROS.de && FILTROS.ate){
+    return [new Date(FILTROS.de).getTime(), new Date(FILTROS.ate+"T23:59").getTime()];
+  }
+  return [-Infinity, Infinity]; // tudo
+}
+// um veículo passa nos filtros de atributo?
+function veicPassaFiltro(v){
+  if(FILTROS.placa && !v.placa.toUpperCase().includes(FILTROS.placa.toUpperCase())) return false;
+  if(FILTROS.grupo && v.grupo!==FILTROS.grupo) return false;
+  if(FILTROS.filial && v.filial!==FILTROS.filial) return false;
+  if(FILTROS.status && situacao(v)!==FILTROS.status) return false;
+  if(FILTROS.modelo){ // modelo vem das OS (campo modelo) — casa se alguma OS tem esse modelo
+    const temModelo = v.mans.some(os=>os.servicos.some(s=>(s.modelo||"").toUpperCase().includes(FILTROS.modelo.toUpperCase())));
+    if(!temModelo && !(v.grupo||"").toUpperCase().includes(FILTROS.modelo.toUpperCase())) return false;
+  }
+  return true;
+}
+// lista de veículos após filtros de atributo (não de período/OS)
+function veiculosFiltrados(){ return VEIC.filter(veicPassaFiltro); }
+// um serviço de OS passa nos filtros de OS (fornecedor, tipo, período)?
+function osServicoPassa(os, s){
+  const [ini,fim]=intervaloPeriodo();
+  const d=ts(os.data); const t = d?new Date(d).getTime():null;
+  if(t!==null && (t<ini||t>fim)) return false;
+  if(FILTROS.fornecedor && !(s.fornecedor||"").toUpperCase().includes(FILTROS.fornecedor.toUpperCase())) return false;
+  if(FILTROS.tipoManut && (s.tipo||"")!==FILTROS.tipoManut) return false;
+  if(FILTROS.modelo && !(s.modelo||"").toUpperCase().includes(FILTROS.modelo.toUpperCase())) return false;
+  return true;
+}
+
+function agregarOS(){
+  const porVeiculo=new Map(), porFornecedor=new Map(), porPeca=new Map(), porMes=new Map(), porModelo=new Map(), porTipo=new Map(), porMesOS=new Map();
+  let custoTotal=0; const osContadas=new Set();
+  const veics = veiculosFiltrados();
+  for(const v of veics){
+    for(const os of v.mans){
+      // aplica filtros a nível de serviço; a OS entra se tiver ao menos 1 serviço que passa
+      const serv = os.servicos.filter(s=>osServicoPassa(os,s));
+      if(!serv.length) continue;
+      const totalOSfiltrado = serv.reduce((t,s)=>t+brl(s.vlrTotal),0);
+      osContadas.add(os.numOS);
+      custoTotal += totalOSfiltrado;
+      // por veículo
+      if(!porVeiculo.has(v.placa)) porVeiculo.set(v.placa,{placa:v.placa,modelo:v.grupo||"",total:0,nOS:0});
+      const pv=porVeiculo.get(v.placa); pv.total+=totalOSfiltrado; pv.nOS++;
+      // por mês (custo e contagem de OS)
+      const d=ts(os.data);
+      if(d){ const dt=new Date(d); const k=dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0");
+        porMes.set(k,(porMes.get(k)||0)+totalOSfiltrado);
+        porMesOS.set(k,(porMesOS.get(k)||0)+1); }
+      for(const s of serv){
+        const val=brl(s.vlrTotal);
+        const forn=(s.fornecedor||"").split(" - ")[0].trim();
+        if(forn) porFornecedor.set(forn,(porFornecedor.get(forn)||0)+val);
+        const pc=(s.descricaoPeca||s.justificativa||"").trim().toUpperCase();
+        if(pc){ if(!porPeca.has(pc)) porPeca.set(pc,{desc:pc,qtde:0,total:0,n:0});
+          const p=porPeca.get(pc); p.total+=val; p.n++;
+          const q=parseFloat(String(s.qtde||"0").replace(",",".")); p.qtde+=isNaN(q)?0:q; }
+        const mod=(s.modelo||v.grupo||"").trim().toUpperCase();
+        if(mod) porModelo.set(mod,(porModelo.get(mod)||0)+val);
+        const tp=(s.tipo||"Outros").trim();
+        porTipo.set(tp,(porTipo.get(tp)||0)+val);
+      }
+    }
+  }
+  return {
+    custoTotal, totalOS:osContadas.size,
+    topVeic:[...porVeiculo.values()].sort((a,b)=>b.total-a.total).slice(0,10),
+    topVeicOS:[...porVeiculo.values()].sort((a,b)=>b.nOS-a.nOS).slice(0,10),
+    topForn:[...porFornecedor.entries()].map(([nome,total])=>({nome,total})).sort((a,b)=>b.total-a.total).slice(0,10),
+    topPeca:[...porPeca.values()].sort((a,b)=>b.total-a.total).slice(0,10),
+    topModelo:[...porModelo.entries()].map(([nome,total])=>({nome,total})).sort((a,b)=>b.total-a.total).slice(0,10),
+    porTipo:[...porTipo.entries()].map(([tipo,total])=>({tipo,total})).sort((a,b)=>b.total-a.total),
+    meses:[...porMes.entries()].sort((a,b)=>a[0].localeCompare(b[0])),
+    mesesOS:porMesOS
+  };
+}
+
+// helpers visuais compartilhados
+const _nomeMes=k=>{const [a,m]=k.split("-");const nm=["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];return nm[+m-1]+"/"+a.slice(2);};
+const _barra=(label,valorTxt,pct,cls="")=>`
+  <div class="bar-row">
+    <div class="bar-label" title="${esc(label)}">${esc(label)}</div>
+    <div class="bar-track"><div class="bar-fill ${cls}" style="width:${pct}%"></div></div>
+    <div class="bar-val">${valorTxt}</div>
+  </div>`;
+function _blocoRankingsOS(ag){
+  const maxVeic=Math.max(...ag.topVeic.map(x=>x.total),1);
+  const maxVeicOS=Math.max(...ag.topVeicOS.map(x=>x.nOS),1);
+  const maxForn=Math.max(...ag.topForn.map(x=>x.total),1);
+  const maxPeca=Math.max(...ag.topPeca.map(x=>x.total),1);
+  const maxModelo=Math.max(...ag.topModelo.map(x=>x.total),1);
+  const maxMes=Math.max(...ag.meses.map(x=>x[1]),1);
+  // gráfico de meses com custo + nº de OS no tooltip
+  const colunas=ag.meses.map(([k,v])=>{
+    const nOS=ag.mesesOS.get(k)||0;
+    const medio=nOS?v/nOS:0;
+    return `<div class="col-item" title="${_nomeMes(k)} — Custo: R$ ${fmtBRL(v)} · ${nOS} OS · Médio: R$ ${fmtBRL(medio)}">
+      <div class="col-bar" style="height:${Math.round(v/maxMes*100)}%"></div>
+      <div class="col-lbl">${_nomeMes(k)}</div>
+    </div>`;}).join("");
+  // manutenção por tipo (preventiva/corretiva/sinistro/despesa)
+  const totTipo=ag.porTipo.reduce((t,x)=>t+x.total,0)||1;
+  const corTipo=t=>{const s=t.toUpperCase();return s.includes("PREVENT")?"ok":s.includes("CORRET")?"wr":s.includes("SINISTRO")?"fl":"";};
+  const blocoTipo=ag.porTipo.length?`<div class="panel"><div class="panel-title">Manutenção por tipo <span class="tip" title="Classificação do campo Tipo de cada serviço da OS">ⓘ</span></div>
+    ${ag.porTipo.map(t=>_barra(t.tipo,"R$ "+fmtBRL(t.total)+" ("+Math.round(t.total/totTipo*100)+"%)",Math.round(t.total/totTipo*100),corTipo(t.tipo))).join("")}
+  </div>`:"";
+  return `
+    ${ag.meses.length?`<div class="panel">
+      <div class="panel-title">Evolução de custos com OS <span class="tip" title="Soma do valor das OS por mês, no período selecionado">ⓘ</span></div>
+      <div class="cols">${colunas}</div>
+    </div>`:`<div class="panel"><div class="panel-empty">Sem OS no período selecionado.</div></div>`}
+    <div class="grid2">
+      <div class="panel"><div class="panel-title">Veículos que mais gastaram</div>
+        ${ag.topVeic.map(v=>_barra(`${v.placa}${v.modelo?" · "+v.modelo:""} (${v.nOS} OS)`,"R$ "+fmtBRL(v.total),Math.round(v.total/maxVeic*100))).join("")||'<div class="panel-empty">—</div>'}
+      </div>
+      <div class="panel"><div class="panel-title">Veículos com mais OS</div>
+        ${ag.topVeicOS.map(v=>_barra(`${v.placa}${v.modelo?" · "+v.modelo:""}`,v.nOS+" OS",Math.round(v.nOS/maxVeicOS*100))).join("")||'<div class="panel-empty">—</div>'}
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="panel"><div class="panel-title">Peças / serviços mais comprados</div>
+        ${ag.topPeca.map(p=>_barra(`${p.desc}${p.qtde?" · "+p.qtde.toLocaleString("pt-BR")+" un":""}`,"R$ "+fmtBRL(p.total),Math.round(p.total/maxPeca*100),"wr")).join("")||'<div class="panel-empty">—</div>'}
+      </div>
+      <div class="panel"><div class="panel-title">Principais modelos por custo</div>
+        ${ag.topModelo.map(m=>_barra(m.nome,"R$ "+fmtBRL(m.total),Math.round(m.total/maxModelo*100))).join("")||'<div class="panel-empty">—</div>'}
+      </div>
+    </div>
+    <div class="panel"><div class="panel-title">Fornecedores que mais receberam</div>
+      ${ag.topForn.map(f=>_barra(f.nome,"R$ "+fmtBRL(f.total),Math.round(f.total/maxForn*100),"ok")).join("")||'<div class="panel-empty">—</div>'}
+    </div>
+    ${blocoTipo}`;
+}
+
+// Barra de filtros do painel (período + atributos)
+function _barraFiltros(){
+  const optSel=(val,arr,cur)=>`<option value="">${val}</option>`+arr.map(o=>`<option value="${esc(o)}"${o===cur?" selected":""}>${esc(o)}</option>`).join("");
+  const grupos=[...new Set(VEIC.map(v=>v.grupo).filter(Boolean))].sort();
+  const filiais=[...new Set(VEIC.map(v=>v.filial).filter(Boolean))].sort();
+  const forns=[...new Set(VEIC.flatMap(v=>v.mans.flatMap(os=>os.servicos.map(s=>(s.fornecedor||"").split(" - ")[0].trim()))).filter(Boolean))].sort();
+  const tipos=[...new Set(VEIC.flatMap(v=>v.mans.flatMap(os=>os.servicos.map(s=>s.tipo).filter(Boolean))))].sort();
+  const pSel=p=>FILTROS.periodo===p?" selected":"";
+  return `<div class="filtros-bar">
+    <select id="fPeriodo" title="Período do gráfico e dos custos de OS">
+      <option value="6m"${pSel("6m")}>Últimos 6 meses</option>
+      <option value="12m"${pSel("12m")}>Últimos 12 meses</option>
+      <option value="atual"${pSel("atual")}>Ano atual</option>
+      <option value="anterior"${pSel("anterior")}>Ano anterior</option>
+      <option value="tudo"${pSel("tudo")}>Todo o histórico</option>
+      <option value="custom"${pSel("custom")}>Período personalizado</option>
+    </select>
+    <span id="customRange" style="${FILTROS.periodo==="custom"?"":"display:none"}">
+      <input type="date" id="fDe" value="${FILTROS.de||""}"> até <input type="date" id="fAte" value="${FILTROS.ate||""}">
+    </span>
+    <input type="search" id="fPlaca" placeholder="Placa" value="${esc(FILTROS.placa)}">
+    <select id="fGrupoG">${optSel("Todos os grupos",grupos,FILTROS.grupo)}</select>
+    <select id="fFilialG">${optSel("Todas as filiais",filiais,FILTROS.filial)}</select>
+    <select id="fStatusG">
+      <option value="">Toda situação</option>
+      ${Object.entries(SIT_LABEL).map(([k,v])=>`<option value="${k}"${FILTROS.status===k?" selected":""}>${v}</option>`).join("")}
+    </select>
+    <select id="fFornG">${optSel("Todos fornecedores",forns.slice(0,300),FILTROS.fornecedor)}</select>
+    <select id="fTipoG">${optSel("Todo tipo de manut.",tipos,FILTROS.tipoManut)}</select>
+    <button class="btn-clear" id="fLimpar" title="Limpar filtros">Limpar</button>
+  </div>`;
+}
+// liga os eventos da barra de filtros
+function ligarFiltros(){
+  const on=(id,ev,fn)=>{const el=$("#"+id); if(el) el.addEventListener(ev,fn);};
+  on("fPeriodo","change",e=>{FILTROS.periodo=e.target.value; renderPainel();});
+  on("fDe","change",e=>{FILTROS.de=e.target.value; if(FILTROS.ate) renderPainel();});
+  on("fAte","change",e=>{FILTROS.ate=e.target.value; if(FILTROS.de) renderPainel();});
+  on("fPlaca","input",e=>{FILTROS.placa=e.target.value; clearTimeout(window.__ft); window.__ft=setTimeout(renderPainel,350);});
+  on("fGrupoG","change",e=>{FILTROS.grupo=e.target.value; renderPainel();});
+  on("fFilialG","change",e=>{FILTROS.filial=e.target.value; renderPainel();});
+  on("fStatusG","change",e=>{FILTROS.status=e.target.value; renderPainel();});
+  on("fFornG","change",e=>{FILTROS.fornecedor=e.target.value; renderPainel();});
+  on("fTipoG","change",e=>{FILTROS.tipoManut=e.target.value; renderPainel();});
+  on("fLimpar","click",()=>{Object.assign(FILTROS,{periodo:"12m",de:null,ate:null,placa:"",modelo:"",grupo:"",filial:"",status:"",fornecedor:"",tipoManut:""}); renderPainel();});
+  // botões de topo: exportar (menu) e imprimir
+  on("btn-export","click",e=>{e.stopPropagation(); toggleMenuExport();});
+  on("btn-print","click",()=>window.print());
+  document.querySelectorAll("#menu-export button[data-exp]").forEach(b=>b.onclick=()=>acaoExport(b.dataset.exp));
+  // fecha o menu ao clicar fora
+  document.addEventListener("click",()=>toggleMenuExport(false),{once:true});
+}
+
+// PAINEL: visão geral das 3 áreas (frota + OS + contratos)
+// navega para uma aba programaticamente (reusa o clique real do botão)
+function irParaAba(aba, cfg){
+  const btn=document.querySelector(`.aba[data-aba="${aba}"]`);
+  if(!btn || btn.style.display==="none") return;
+  btn.click();
+  if(cfg){
+    setTimeout(()=>{
+      if(cfg.busca!==undefined && $("#q")){ $("#q").value=cfg.busca; $("#q").dispatchEvent(new Event("input")); }
+      if(cfg.frota!==undefined && $("#fFrota")){ $("#fFrota").value=cfg.frota; $("#fFrota").dispatchEvent(new Event("change")); }
+    },60);
+  }
+}
+
+// Lateral informativa do Painel (Resumo rápido, Atenções, Dados carregados)
+function renderSidePainel(){
+  const box=$("#side-painel"); if(!box) return;
+  const veics=veiculosFiltrados();
+  const sit={operacao:0,manutencao:0,disponivel:0,transito:0,fora:0,outro:0};
+  for(const v of veics) sit[situacao(v)]++;
+  const frotaTotal=veics.length;
+  const ag=agregarOS();
+
+  const custos=veics.map(v=>v.custoMan).filter(x=>x>0).sort((a,b)=>a-b);
+  const nOSs=veics.map(v=>v.totalMan).filter(x=>x>0).sort((a,b)=>a-b);
+  const p90=arr=>arr.length?arr[Math.floor(arr.length*0.9)]:0;
+  const limCusto=p90(custos);
+  const limOS=Math.max(p90(nOSs),5);
+  const custoElevado=veics.filter(v=>v.custoMan>=limCusto && v.custoMan>0).length;
+  const muitasOS=veics.filter(v=>v.totalMan>=limOS).length;
+
+  const row=(lbl,val,cls,onclick)=>`<div class="sp-row${onclick?" clik":""}"${onclick?` data-act="${onclick}"`:""}><span class="lbl">${lbl}</span><span class="val ${cls||""}">${val}</span></div>`;
+  const alert=(cls,txt,onclick)=>`<div class="sp-alert"${onclick?` data-act="${onclick}"`:""}><span class="dot ${cls}"></span><span class="txt">${txt}</span></div>`;
+
+  const alertas=[];
+  if(sit.manutencao>0) alertas.push(alert("wr",`<b>${sit.manutencao}</b> veículo(s) em manutenção`,"manutencao"));
+  if(custoElevado>0) alertas.push(alert("fl",`<b>${custoElevado}</b> com custo elevado de OS`,"custoAlto"));
+  if(muitasOS>0) alertas.push(alert("wr",`<b>${muitasOS}</b> com muitas OS`,"muitasOS"));
+  if(sit.fora>0) alertas.push(alert("",`<b>${sit.fora}</b> fora da frota`,"fora"));
+  const cAtras=CONTRATOS.filter(c=>c.status==="atrasadas").length;
+  if(cAtras>0) alertas.push(alert("fl",`<b>${cAtras}</b> contrato(s) atrasado(s)`,"contratosAtras"));
+
+  box.innerHTML=`
+    <button class="sp-toggle" id="sp-toggle" aria-expanded="true">Resumo do painel ▾</button>
+    <div class="sp-body" id="sp-body">
+    <div class="sp-sec">
+      <h4>Resumo rápido</h4>
+      ${row("Frota total",frotaTotal.toLocaleString("pt-BR"),"","tudo")}
+      ${row("Em manutenção",sit.manutencao.toLocaleString("pt-BR"),"wr","manutencao")}
+      ${row("Fora da frota",sit.fora.toLocaleString("pt-BR"),"","fora")}
+      ${row("Ordens de serviço",ag.totalOS.toLocaleString("pt-BR"),"","os")}
+      ${row("Custo total OS","R$ "+fmtBRL(ag.custoTotal),"ok")}
+    </div>
+    <div class="sp-sec">
+      <h4>Atenções</h4>
+      ${alertas.length?alertas.join(""):'<div class="sp-empty">Nenhum alerta no momento.</div>'}
+    </div>
+    <div class="sp-sec">
+      <h4>Dados carregados</h4>
+      <div class="sp-meta">
+        Movimentações: <b>${(rawMov?rawMov.length:0).toLocaleString("pt-BR")}</b><br>
+        Ordens de serviço: <b>${ag.totalOS.toLocaleString("pt-BR")}</b><br>
+        Contratos: <b>${CONTRATOS.length.toLocaleString("pt-BR")}</b><br>
+        Atualizado: <b>${LAST_UPDATE?new Date(LAST_UPDATE).toLocaleString("pt-BR"):"—"}</b>
+      </div>
+    </div>
+    <button class="sp-btn" id="sp-reload">Atualizar base de dados</button>
+    </div>
+  `;
+
+  // toggle recolher (mobile)
+  const tg=$("#sp-toggle"), bd=$("#sp-body");
+  if(tg&&bd) tg.onclick=()=>{ const open=bd.style.display!=="none"; bd.style.display=open?"none":"block"; tg.setAttribute("aria-expanded",!open); tg.innerHTML=(open?"Resumo do painel ▸":"Resumo do painel ▾"); };
+
+  box.querySelectorAll("[data-act]").forEach(el=>el.onclick=()=>{
+    const a=el.dataset.act;
+    if(a==="tudo") irParaAba("tudo");
+    else if(a==="manutencao") irParaAba("tudo");
+    else if(a==="fora") irParaAba("tudo",{frota:"fora"});
+    else if(a==="os"||a==="custoAlto"||a==="muitasOS") irParaAba("os");
+    else if(a==="contratosAtras") irParaAba("contratos");
+  });
+  const rl=$("#sp-reload"); if(rl) rl.onclick=()=>$("#reload").click();
+}
+
+function renderPainel(){
+  const kpi=(num,label,cls="",tip="")=>`<div class="kpi ${cls}"><div class="kpi-num">${num}</div><div class="kpi-lbl">${label}${tip?` <span class="tip" title="${esc(tip)}">ⓘ</span>`:""}</div></div>`;
+  const veics=veiculosFiltrados();
+  // --- frota (situação por status atual) ---
+  const sit={operacao:0,manutencao:0,disponivel:0,transito:0,fora:0,outro:0};
+  for(const v of veics) sit[situacao(v)]++;
+  const frotaTotal=veics.length;
+  const frotaAtual=frotaTotal - sit.fora;                 // na frota = base menos fora da frota
+  const disponibilidade = frotaAtual>0 ? Math.round((frotaAtual - sit.manutencao)/frotaAtual*100) : 0;
+  // --- OS ---
+  const ag=agregarOS();
+  const custoMedioVeic = frotaAtual>0 ? ag.custoTotal/frotaAtual : 0;
+  // --- contratos ---
+  const cAbertas=CONTRATOS.filter(c=>c.status==="abertas").length;
+  const cAtrasadas=CONTRATOS.filter(c=>c.status==="atrasadas").length;
+  const cFechadas=CONTRATOS.filter(c=>c.status==="fechadas").length;
+  const cRenovadas=CONTRATOS.filter(c=>c.status==="renovadas").length;
+  // --- alertas operacionais ---
+  const alertas=[];
+  if(sit.manutencao>0) alertas.push(`<span class="alerta wr">${sit.manutencao} veículo(s) em manutenção</span>`);
+  if(cAtrasadas>0) alertas.push(`<span class="alerta fl">${cAtrasadas} contrato(s) atrasado(s)</span>`);
+  if(ag.topVeic[0] && ag.topVeic[0].total>0) alertas.push(`<span class="alerta">Maior gasto: ${esc(ag.topVeic[0].placa)} · R$ ${fmtBRL(ag.topVeic[0].total)}</span>`);
+  const filtroAtivo = FILTROS.placa||FILTROS.grupo||FILTROS.filial||FILTROS.status||FILTROS.fornecedor||FILTROS.tipoManut||FILTROS.periodo!=="12m";
+
+  const html=`
+    <div class="dash">
+      <div class="dash-head"><div>
+        <div class="dash-title">Central de Gestão de Frota</div>
+        <div class="dash-sub">Indicadores operacionais, financeiros e de manutenção${filtroAtivo?' · <span class="filtro-on">filtros aplicados</span>':""}</div>
+      </div>
+      <div class="dash-actions no-print">
+        <div class="export-wrap">
+          <button class="btn-top" id="btn-export">⤓ Exportar ▾</button>
+          <div class="menu-export" id="menu-export" style="display:none">
+            <div class="menu-grp">Frota</div>
+            <button data-exp="frotaAtual">Frota atual</button>
+            <button data-exp="todos">Todos os veículos</button>
+            <button data-exp="manutencao">Veículos em manutenção</button>
+            <button data-exp="fora">Veículos fora da frota</button>
+            <div class="menu-grp">Operação</div>
+            <button data-exp="mov">Movimentações</button>
+            <button data-exp="os">Ordens de serviço</button>
+            <button data-exp="contratos">Contratos</button>
+            <div class="menu-grp">Análises</div>
+            <button data-exp="topVeic">Veículos com maiores gastos</button>
+            <button data-exp="forn">Gastos por fornecedor</button>
+            <button data-exp="modelos">Gastos por modelo</button>
+            <button data-exp="resumo">Resumo executivo</button>
+          </div>
+        </div>
+        <button class="btn-top" id="btn-print">🖨 Imprimir</button>
+      </div></div>
+
+      ${_barraFiltros()}
+
+      ${alertas.length?`<div class="alertas">${alertas.join("")}</div>`:""}
+
+      <div class="sec-title">Frota</div>
+      <div class="kpis">
+        ${kpi(frotaTotal.toLocaleString("pt-BR"),"Frota total","","Total de veículos na base (após filtros)")}
+        ${kpi(frotaAtual.toLocaleString("pt-BR"),"Frota atual","","Veículos na frota (exclui os fora da frota)")}
+        ${kpi(sit.operacao.toLocaleString("pt-BR"),"Em operação","ok","Status atual LOCADO ou USO INTERNO")}
+        ${kpi(sit.manutencao.toLocaleString("pt-BR"),"Em manutenção","wr","Status atual em oficina/funilaria/lavagem")}
+        ${kpi(sit.fora.toLocaleString("pt-BR"),"Fora da frota","fl","Veículos sem movimentação atual (só histórico de OS)")}
+        ${kpi(disponibilidade+"%","Disponibilidade","","(Frota atual − em manutenção) ÷ frota atual")}
+      </div>
+
+      <div class="sec-title">Ordens de Serviço</div>
+      <div class="kpis">
+        ${kpi(ag.totalOS.toLocaleString("pt-BR"),"Total de OS","","Nº de OS distintas no período/filtros")}
+        ${kpi("R$ "+fmtBRL(ag.custoTotal),"Custo total","money")}
+        ${kpi("R$ "+fmtBRL(ag.totalOS?ag.custoTotal/ag.totalOS:0),"Custo médio por OS","money","Custo total ÷ nº de OS")}
+        ${kpi("R$ "+fmtBRL(custoMedioVeic),"Custo médio por veículo","money","Custo total ÷ frota atual")}
+      </div>
+      ${_blocoRankingsOS(ag)}
+
+      ${CONTRATOS.length?`
+      <div class="sec-title">Contratos</div>
+      <div class="kpis">
+        ${kpi(CONTRATOS.length.toLocaleString("pt-BR"),"Total de contratos")}
+        ${kpi(cAbertas.toLocaleString("pt-BR"),"Abertos","ok")}
+        ${kpi(cAtrasadas.toLocaleString("pt-BR"),"Atrasados","fl")}
+        ${kpi(cRenovadas.toLocaleString("pt-BR"),"Renovados")}
+        ${kpi(cFechadas.toLocaleString("pt-BR"),"Fechados")}
+      </div>`:""}
+
+      <div class="dash-hint no-print">Use as abas acima para buscar veículos, OS ou contratos específicos. Botão “Exportar” no topo para baixar os dados.</div>
+    </div>`;
+  $("#detail").innerHTML=html;
+  ligarFiltros();
+  renderSidePainel();
+}
+
+// Dashboard da aba OS (só os rankings de manutenção)
+function renderDashboardOS(){
+  const ag=agregarOS();
+  $("#detail").innerHTML=`
+    <div class="dash">
+      <div class="dash-head"><div>
+        <div class="dash-title">Ordens de Serviço — Análise</div>
+        <div class="dash-sub">${ag.totalOS.toLocaleString("pt-BR")} OS · Custo total R$ ${fmtBRL(ag.custoTotal)}</div>
+      </div></div>
+      ${_blocoRankingsOS(ag)}
+      <div class="dash-hint">Clique num veículo à esquerda para ver o histórico completo de OS dele.</div>
+    </div>`;
+}
+
+// Painel inicial com indicadores executivos (mostrado quando nada está selecionado)
+function renderDashboard(){
+  const frotaAtiva = VEIC.filter(v=>!v.foraFrota).length;
+  const fora = VEIC.filter(v=>v.foraFrota).length;
+  const emManut = VEIC.filter(v=>{const s=(v.statusAtual||"").toUpperCase();return s.includes("OFICINA")||s.includes("FUNIL")||s.includes("MANUT");}).length;
+  const totalOS = VEIC.reduce((t,v)=>t+(v.totalMan||0),0);
+  const custoOS = VEIC.reduce((t,v)=>t+(v.custoMan||0),0);
+  const nContratos = CONTRATOS.length;
+  const kpi = (num,label,cls="")=>`<div class="kpi ${cls}"><div class="kpi-num">${num}</div><div class="kpi-lbl">${label}</div></div>`;
+  const html = `
+    <div class="dash">
+      <div class="dash-head">
+        <div>
+          <div class="dash-title">Painel de Frota</div>
+          <div class="dash-sub">Visão geral · Yalla Transportes e Serviços</div>
+        </div>
+      </div>
+      <div class="kpis">
+        ${kpi(VEIC.length.toLocaleString("pt-BR"),"Veículos na base")}
+        ${kpi(frotaAtiva.toLocaleString("pt-BR"),"Frota ativa","ok")}
+        ${kpi(emManut.toLocaleString("pt-BR"),"Em manutenção","wr")}
+        ${kpi(fora.toLocaleString("pt-BR"),"Fora da frota","fl")}
+        ${kpi(totalOS.toLocaleString("pt-BR"),"Ordens de serviço")}
+        ${kpi("R$ "+fmtBRL(custoOS),"Custo total em OS","money")}
+        ${nContratos?kpi(nContratos.toLocaleString("pt-BR"),"Contratos"):""}
+      </div>
+      <div class="dash-hint">Selecione um veículo à esquerda para ver o histórico completo, ou use as abas acima.</div>
+    </div>`;
+  $("#detail").innerHTML=html;
+}
+
+/* ---------- persistência (IndexedDB) ---------- */
+const DB_NAME="frotaYalla", STORE="dados";
+function db(){
+  return new Promise((res,rej)=>{
+    const r=indexedDB.open(DB_NAME,1);
+    r.onupgradeneeded=()=>r.result.createObjectStore(STORE);
+    r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error);
+  });
+}
+async function salvarDados(){
+  try{
+    const d=await db();
+    await new Promise((res,rej)=>{
+      const tx=d.transaction(STORE,"readwrite"); const s=tx.objectStore(STORE);
+      s.put(rawMov,"mov"); s.put(rawMan,"man"); s.put(Date.now(),"quando");
+      tx.oncomplete=res; tx.onerror=()=>rej(tx.error);
+    });
+    return true;
+  }catch(e){ console.warn("Falha ao salvar:",e); return false; }
+}
+async function carregarDados(){
+  try{
+    const d=await db();
+    return await new Promise((res)=>{
+      const tx=d.transaction(STORE,"readonly"); const s=tx.objectStore(STORE);
+      const out={};
+      s.get("mov").onsuccess=e=>out.mov=e.target.result;
+      s.get("man").onsuccess=e=>out.man=e.target.result;
+      s.get("quando").onsuccess=e=>out.quando=e.target.result;
+      tx.oncomplete=()=>res(out);
+      tx.onerror=()=>res(null);
+    });
+  }catch(e){ return null; }
+}
+async function limparDados(){
+  try{ const d=await db();
+    await new Promise(res=>{ const tx=d.transaction(STORE,"readwrite");
+      tx.objectStore(STORE).clear(); tx.oncomplete=res; });
+  }catch(e){}
+}
+
+/* ---------- ACESSO ONLINE: link secreto + carga automática ---------- */
+// Chave de acesso no link (após o #). Sem ela, o site não abre.
+// Link para a equipe:  <endereço-do-site>/#qinaAkav5tPP
+const CHAVE_ACESSO = "qinaAkav5tPP";
+// Arquivos de dados que ficam no servidor junto do HTML (comprimidos .gz)
+const DADOS_MOV = "movimentacao.gzdata";
+const DADOS_OS  = "os.gzdata";
+
+async function baixarGz(url){
+  const r = await fetch(url);
+  if(!r.ok) throw new Error("não encontrou "+url);
+  // pega os bytes crus e descomprime manualmente — não depende do header do servidor
+  const buf = await r.arrayBuffer();
+  const ds = new DecompressionStream("gzip");
+  const stream = new Response(buf).body.pipeThrough(ds);
+  return await new Response(stream).text();
+}
+
+function carregarContratos(jsonText){
+  try{
+    CONTRATOS = JSON.parse(jsonText);
+    // ordena por status (abertas, atrasadas, fechadas, renovadas) e depois nº do contrato
+    const ordem={abertas:0,atrasadas:1,fechadas:2,renovadas:3};
+    CONTRATOS.sort((a,b)=>{
+      const d=(ordem[a.status]??9)-(ordem[b.status]??9); if(d) return d;
+      return (a.contrato||"").localeCompare(b.contrato||"",undefined,{numeric:true});
+    });
+  }catch(e){ CONTRATOS=[]; }
+  // se não há contratos, esconde a aba
+  const btn=document.querySelector('.aba[data-aba="contratos"]');
+  if(btn) btn.style.display = CONTRATOS.length?"":"none";
+  // se o dashboard está na tela (nada selecionado, aba de veículos), atualiza o KPI de contratos
+  if($("#detail").querySelector(".dash")){
+    if(ABA==="painel") renderPainel();
+    else if(!SEL && ABA!=="contratos" && ABA!=="os") renderDashboard();
+  }
+}
+
+// ---- controle do overlay de carregamento (fade suave) ----
+function mostrarLoading(){
+  const l=$("#loading");
+  l.style.display="grid";
+  l.classList.remove("out");
+  // força reflow p/ a transição de opacidade valer
+  void l.offsetWidth;
+  l.classList.add("on");
+}
+function esconderLoading(){
+  const l=$("#loading");
+  l.classList.remove("on");
+  l.classList.add("out");
+  setTimeout(()=>{ l.style.display="none"; l.classList.remove("out"); }, 420); // casa com transition .4s
+}
+function setProg(pct,txt){ $("#load-fill").style.width=pct+"%"; if(txt!==undefined) $("#loading-pct").textContent=txt; }
+
+async function carregarOnline(){
+  $("#gate").style.display="none";
+  mostrarLoading();
+  try{
+    setProg(10,"Iniciando sistema…");
+    await new Promise(r=>setTimeout(r,250));
+    setProg(30,"Lendo movimentações…");
+    const csvMov = await baixarGz(DADOS_MOV);
+    rawMov = parseCSV(csvMov);
+    setProg(60,"Processando ordens de serviço…");
+    try{ const csvOs = await baixarGz(DADOS_OS); rawMan = parseCSV(csvOs); }
+    catch(e){ rawMan=null; } // OS é opcional
+    setProg(85,"Montando painel…");
+    await new Promise(r=>setTimeout(r,200));
+    setProg(100,"Pronto!");
+    await new Promise(r=>setTimeout(r,300));
+    esconderLoading();
+    abrir();
+    // Contratos carregam em segundo plano — não travam a entrada no sistema.
+    (async()=>{
+      try{ const jc = await baixarGz(DADOS_CONTRATOS); carregarContratos(jc); }
+      catch(e){ CONTRATOS=[]; }
+    })();
+  }catch(e){
+    esconderLoading();
+    $("#gate").style.display="grid";
+    $("#gate-msg").textContent="Erro ao carregar dados: "+e.message;
+  }
+}
+
+// se tem os arquivos de dados no servidor, ativa modo online (chave no link + carga automática).
+// senão, cai no modo local (arrastar CSV) — útil para você testar no seu PC.
+(async()=>{
+  let temDados=false;
+  try{ const r=await fetch(DADOS_MOV,{method:"HEAD"}); temDados=r.ok; }catch(e){}
+  if(!temDados){
+    // MODO LOCAL: esconde o gate, mostra o drop de sempre, e tenta carregar do IndexedDB
+    $("#gate").style.display="none";
+    bootLocal();
+    return;
+  }
+  window.__MODO_ONLINE=true;
+  // MODO ONLINE: verifica a chave após o # do link
+  const chave = (location.hash||"").replace(/^#/,"").trim();
+  if(chave===CHAVE_ACESSO){
+    carregarOnline();
+  } else {
+    // sem a chave certa: tela neutra, sem revelar nada
+    $("#gate").style.display="grid";
+  }
+})();
+
+$("#pick").onclick=()=>$("#file").click();
+$("#file").onchange=e=>ingest([...e.target.files]);
+$("#go").onclick=async()=>{
+  // salva antes de abrir, para a próxima vez carregar sozinho
+  if($("#saveChk") && $("#saveChk").checked){ await salvarDados(); }
+  // mostra o overlay de carregamento por cima enquanto processa e monta o painel
+  mostrarLoading();
+  setProg(20,"Iniciando sistema…");
+  await new Promise(r=>setTimeout(r,200));
+  setProg(55,"Processando ordens de serviço…");
+  await new Promise(r=>setTimeout(r,200));
+  setProg(85,"Montando painel…");
+  abrir();
+  setProg(100,"Pronto!");
+  await new Promise(r=>setTimeout(r,300));
+  esconderLoading();
+};
+
+// "trocar arquivos" agora também limpa o que estava salvo
+$("#reload").onclick=async()=>{ await limparDados(); location.reload(); };
+
+const dz=$("#drop");
+["dragenter","dragover"].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add("over");}));
+["dragleave","drop"].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove("over");}));
+dz.addEventListener("drop",e=>{ const fs=[...e.dataTransfer.files].filter(f=>f.name.endsWith(".csv")); if(fs.length) ingest(fs); });
+
+/* ---------- carga automática ao abrir (só no modo LOCAL) ---------- */
+async function bootLocal(){
+  const salvo=await carregarDados();
+  if(salvo && salvo.mov && salvo.mov.length){
+    rawMov=salvo.mov; rawMan=salvo.man||null;
+    const dias = salvo.quando ? Math.floor((Date.now()-salvo.quando)/864e5) : null;
+    // mostra um aviso rápido e abre direto
+    abrir();
+    // banner discreto para trocar os dados se quiser
+    const b=document.createElement("div");
+    b.style.cssText="position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:60;"+
+      "background:var(--navy);color:#fff;padding:10px 16px;border-radius:10px;font-size:12.5px;"+
+      "box-shadow:var(--shadow-lg);display:flex;gap:12px;align-items:center";
+    b.innerHTML=`<span>Dados carregados da memória${dias!==null?` · atualizados há ${dias} dia(s)`:''}.</span>`+
+      `<span id="bTrocar" style="color:var(--gold);cursor:pointer;font-weight:600">Trocar arquivos</span>`+
+      `<span id="bFechar" style="cursor:pointer;opacity:.6">✕</span>`;
+    document.body.appendChild(b);
+    b.querySelector("#bTrocar").onclick=async()=>{ await limparDados(); location.reload(); };
+    b.querySelector("#bFechar").onclick=()=>b.remove();
+    setTimeout(()=>b.style.opacity="0",6000);
+    b.style.transition="opacity .5s";
+  }
+}
+</script>
+</body>
+</html>
